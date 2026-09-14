@@ -1,0 +1,22 @@
+{
+  "name": "tech-guru-inventory",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Inventory management app (React 19 + Firebase), migrated from the static HTML prototype.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "firebase": "^12.19.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.0"
+  }
+}
