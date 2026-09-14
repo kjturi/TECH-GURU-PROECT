@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// NOTE: This app currently has no authentication, so these rules leave the
+// "assets" collection open to any client that has your Firebase config.
+// That's fine for local development/demos only. Before deploying anywhere
+// public, add Firebase Authentication and restrict reads/writes to signed-in
+// users, e.g.:
+//   allow read, write: if request.auth != null;
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /assets/{assetId} {
+      allow read, write: if true;
+    }
+  }
+}

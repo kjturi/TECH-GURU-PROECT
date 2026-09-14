@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Env files (never commit real Firebase keys)
+.env
+.env.local
+.env.*.local
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.local
+
+# Logs
+npm-debug.log*
