@@ -30,3 +30,9 @@ setGlobalOptions({maxInstances: 10});
 //   logger.info("Hello logs!", {structuredData: true});
 //   response.send("Hello from Firebase!");
 // });
+
+// NOTE: The asset request/approval workflow does NOT use a Cloud Function.
+// This project is on the Spark (free) plan, and Cloud Functions + Secret
+// Manager both require the Blaze plan. Instead, Apps Script writes directly
+// to Firestore via a service account and the Firestore REST API. See
+// README.md ("Asset Request & Approval Workflow") and appsscript/Code.gs.

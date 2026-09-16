@@ -5,6 +5,8 @@ import Assets from './pages/Assets.jsx'
 import Categories from './pages/Categories.jsx'
 import Suppliers from './pages/Suppliers.jsx'
 import Reports from './pages/Reports.jsx'
+import Approvals from './pages/Approvals.jsx'
+import ApprovalDetail from './pages/ApprovalDetail.jsx'
 import { useAssets } from './hooks/useAssets.js'
 
 export default function App() {
@@ -19,6 +21,8 @@ export default function App() {
         <Route path="/categories" element={<Categories {...assetsState} />} />
         <Route path="/suppliers" element={<Suppliers {...assetsState} />} />
         <Route path="/reports" element={<Reports {...assetsState} />} />
+        <Route path="/approvals" element={<Approvals />} />
+        <Route path="/approvals/:id" element={<ApprovalDetail />} />
       </Route>
     </Routes>
   )

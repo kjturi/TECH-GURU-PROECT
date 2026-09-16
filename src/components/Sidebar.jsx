@@ -6,6 +6,7 @@ const links = [
   { to: '/categories', label: 'Categories' },
   { to: '/suppliers', label: 'Suppliers' },
   { to: '/reports', label: 'Reports' },
+  { to: '/approvals', label: 'Asset Requests' },
 ]
 
 export default function Sidebar() {

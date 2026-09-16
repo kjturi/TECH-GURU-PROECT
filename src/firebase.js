@@ -5,6 +5,7 @@
 // the app, otherwise Firestore reads/writes will fail.
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -31,3 +32,9 @@ if (!isFirebaseConfigured && import.meta.env.DEV) {
 // Avoid re-initializing during Vite HMR.
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
 export const db = getFirestore(app)
+
+// Used by the Approvals pages for the "Google SSO Verification" step: an
+// approver signs in with Google, and Firestore rules check their email
+// against the "approvers" collection before allowing an approve/reject write.
+export const auth = getAuth(app)
+export const googleProvider = new GoogleAuthProvider()
