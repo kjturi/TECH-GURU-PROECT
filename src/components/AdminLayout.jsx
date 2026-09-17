@@ -32,6 +32,7 @@ const ADMIN_LINKS = [
   { to: '/admin/users', label: 'User Management', icon: '●' },
   { to: '/admin/reports', label: 'Reports', icon: '▧' },
   { to: '/admin/settings', label: 'System Settings', icon: '◎' },
+  { to: '/admin/profile', label: 'Profile', icon: '◉' },
 ]
 
 export default function AdminLayout() {

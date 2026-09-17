@@ -293,8 +293,50 @@ table td.actions-cell {
 }
 .asset-form .form-actions {
   grid-column: 1 / -1;
+}
+.form-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Grouped form sections (telephone details, approvers, declaration) */
+.form-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px 16px;
+  margin-bottom: 16px;
+}
+.form-fieldset legend {
+  font-weight: 600;
+  color: var(--navy-800);
+  padding: 0 6px;
+  font-size: 0.95rem;
+}
+.field-group {
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.field-group:last-child {
+  margin-bottom: 0;
+}
+.field-group-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #4b5563;
+  width: 100%;
+  margin-bottom: 2px;
+}
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #374151;
+  cursor: pointer;
 }
 
 /* State messages */

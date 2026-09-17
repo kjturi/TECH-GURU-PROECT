@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { DEPARTMENTS } from '../../data/requestStatuses.js'
+import { TITLES, COUNTRIES } from '../../data/assetCategories.js'
 
 const ERROR_MESSAGES = {
   'auth/email-already-in-use': 'An account with that email already exists.',
@@ -10,7 +11,21 @@ const ERROR_MESSAGES = {
   'auth/weak-password': 'Password must be at least 6 characters.',
 }
 
-const emptyForm = { fullName: '', employeeId: '', email: '', department: DEPARTMENTS[0], password: '', confirmPassword: '' }
+const emptyForm = {
+  title: TITLES[0],
+  firstName: '',
+  surname: '',
+  employeeId: '',
+  positionTitle: '',
+  phone: '',
+  email: '',
+  department: DEPARTMENTS[0],
+  buBranch: '',
+  sbu: '',
+  country: COUNTRIES[0],
+  password: '',
+  confirmPassword: '',
+}
 
 export default function Register() {
   const { register } = useAuth()
@@ -27,8 +42,8 @@ export default function Register() {
     e.preventDefault()
     setError(null)
 
-    if (!form.fullName.trim() || !form.employeeId.trim() || !form.email.trim() || !form.department) {
-      setError('Please fill in every field.')
+    if (!form.firstName.trim() || !form.surname.trim() || !form.employeeId.trim() || !form.email.trim() || !form.department) {
+      setError('Please fill in your first name, surname, staff ID, email, and department.')
       return
     }
     if (form.password.length < 6) {
@@ -48,10 +63,17 @@ export default function Register() {
       // same restriction on the write itself, so even a forged request
       // can't self-promote.
       await register({
-        fullName: form.fullName.trim(),
+        title: form.title,
+        firstName: form.firstName.trim(),
+        surname: form.surname.trim(),
         employeeId: form.employeeId.trim(),
+        positionTitle: form.positionTitle.trim(),
+        phone: form.phone.trim(),
         email: form.email.trim(),
         department: form.department,
+        buBranch: form.buBranch.trim(),
+        sbu: form.sbu.trim(),
+        country: form.country,
         password: form.password,
       })
       navigate('/requester/assets', { replace: true })
@@ -65,18 +87,37 @@ export default function Register() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
+      <div className="auth-card" style={{ maxWidth: 460 }}>
         <div className="auth-brand">
           <span className="auth-logo" aria-hidden="true">{'▦'}</span>
           <h1>Create your account</h1>
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
-          <label className="auth-label" htmlFor="reg-name">Full Name</label>
-          <input id="reg-name" value={form.fullName} onChange={(e) => set('fullName', e.target.value)} required />
+          <div className="field-group" style={{ marginTop: 8 }}>
+            <span className="field-group-label">Title</span>
+            {TITLES.map((t) => (
+              <label key={t} className="checkbox-inline">
+                <input type="radio" name="title" checked={form.title === t} onChange={() => set('title', t)} />
+                {t}
+              </label>
+            ))}
+          </div>
 
-          <label className="auth-label" htmlFor="reg-emp">Employee ID</label>
+          <label className="auth-label" htmlFor="reg-first">First Name</label>
+          <input id="reg-first" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required />
+
+          <label className="auth-label" htmlFor="reg-surname">Surname</label>
+          <input id="reg-surname" value={form.surname} onChange={(e) => set('surname', e.target.value)} required />
+
+          <label className="auth-label" htmlFor="reg-emp">Staff ID</label>
           <input id="reg-emp" value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)} required />
+
+          <label className="auth-label" htmlFor="reg-position">Position Title</label>
+          <input id="reg-position" value={form.positionTitle} onChange={(e) => set('positionTitle', e.target.value)} />
+
+          <label className="auth-label" htmlFor="reg-phone">Phone</label>
+          <input id="reg-phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
 
           <label className="auth-label" htmlFor="reg-email">Email</label>
           <input
@@ -92,6 +133,19 @@ export default function Register() {
           <select id="reg-dept" value={form.department} onChange={(e) => set('department', e.target.value)}>
             {DEPARTMENTS.map((d) => (
               <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+
+          <label className="auth-label" htmlFor="reg-bu">BU / Branch</label>
+          <input id="reg-bu" value={form.buBranch} onChange={(e) => set('buBranch', e.target.value)} />
+
+          <label className="auth-label" htmlFor="reg-sbu">SBU</label>
+          <input id="reg-sbu" value={form.sbu} onChange={(e) => set('sbu', e.target.value)} />
+
+          <label className="auth-label" htmlFor="reg-country">Country</label>
+          <select id="reg-country" value={form.country} onChange={(e) => set('country', e.target.value)}>
+            {COUNTRIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
 

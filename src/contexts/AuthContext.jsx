@@ -92,25 +92,41 @@ export function AuthProvider({ children }) {
    * anywhere in this app that lets a client set role: 'admin' on create —
    * that's enforced again, independently, by firestore.rules so a forged
    * client request can't do it either.
+   *
+   * Collects the same "Applicant's Details" fields as the Asset Request
+   * Form, once, at sign-up — the request form then pre-fills them from this
+   * profile instead of asking for them again on every request.
    */
-  const register = useCallback(async ({ fullName, employeeId, email, department, password }) => {
-    setAuthError(null)
-    const credential = await createUserWithEmailAndPassword(auth, email, password)
-    await updateProfile(credential.user, { displayName: fullName })
-    await setDoc(doc(db, 'users', credential.user.uid), {
-      name: fullName,
-      email,
-      employeeId,
-      department,
-      role: 'requester',
-      status: 'active',
-      createdAt: serverTimestamp(),
-    })
-    // No need to read the doc back or set profile here — the onSnapshot
-    // subscription above (already listening, since createUserWithEmailAndPassword
-    // just triggered onAuthStateChanged) picks up this write on its own.
-    return credential.user
-  }, [])
+  const register = useCallback(
+    async ({ title, firstName, surname, employeeId, positionTitle, phone, email, department, buBranch, sbu, country, password }) => {
+      setAuthError(null)
+      const fullName = `${firstName} ${surname}`.trim()
+      const credential = await createUserWithEmailAndPassword(auth, email, password)
+      await updateProfile(credential.user, { displayName: fullName })
+      await setDoc(doc(db, 'users', credential.user.uid), {
+        name: fullName,
+        title,
+        firstName,
+        surname,
+        email,
+        employeeId,
+        positionTitle,
+        phone,
+        department,
+        buBranch,
+        sbu,
+        country,
+        role: 'requester',
+        status: 'active',
+        createdAt: serverTimestamp(),
+      })
+      // No need to read the doc back or set profile here — the onSnapshot
+      // subscription above (already listening, since createUserWithEmailAndPassword
+      // just triggered onAuthStateChanged) picks up this write on its own.
+      return credential.user
+    },
+    []
+  )
 
   const logout = useCallback(async () => {
     await firebaseSignOut(auth)

@@ -7,10 +7,36 @@ export default function RequestTimeline({ request, onSignOff, signingOff }) {
 
   return (
     <div className="panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
         <h2 style={{ marginBottom: 0 }}>{request.assetType} {request.rid ? `— ${request.rid}` : ''}</h2>
         <StatusBadge status={request.status} />
       </div>
+      {(request.immediateManager || request.nextApprovingManager) && (
+        <p style={{ marginBottom: 8, fontSize: '0.9rem' }}>
+          {request.immediateManager && <>Immediate Manager: <strong>{request.immediateManager}</strong>. </>}
+          {request.nextApprovingManager && <>Next Approving Manager: <strong>{request.nextApprovingManager}</strong>.</>}
+        </p>
+      )}
+
+      {request.telephoneDetails && (
+        <div className="panel" style={{ background: '#f8fafc', boxShadow: 'none', marginBottom: 12 }}>
+          <h3 style={{ fontSize: '0.95rem', marginBottom: 8 }}>Telephone and UC Request Details</h3>
+          <ul style={{ paddingLeft: 18, fontSize: '0.88rem', color: '#374151' }}>
+            {request.telephoneDetails.requestTypes?.length > 0 && (
+              <li>Type of Request: {request.telephoneDetails.requestTypes.join(', ')}</li>
+            )}
+            {request.telephoneDetails.handsetType && <li>Handset Type: {request.telephoneDetails.handsetType}</li>}
+            {request.telephoneDetails.headsetRequired && <li>Headset: {request.telephoneDetails.headsetRequired}</li>}
+            {request.telephoneDetails.extensionAccess?.length > 0 && (
+              <li>Extension Access: {request.telephoneDetails.extensionAccess.join(', ')}</li>
+            )}
+            {request.telephoneDetails.webexRequested && <li>Webex Requested</li>}
+            {request.telephoneDetails.callCentreAccess?.length > 0 && (
+              <li>Call Centre &amp; IT Helpdesk: {request.telephoneDetails.callCentreAccess.join(', ')}</li>
+            )}
+          </ul>
+        </div>
+      )}
 
       {isRejected ? (
         <p className="state-msg error">

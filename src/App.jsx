@@ -29,7 +29,7 @@ import AssetRequestForm from './pages/requester/AssetRequestForm.jsx'
 import MyRequests from './pages/requester/MyRequests.jsx'
 import RequestStatus from './pages/requester/RequestStatus.jsx'
 import RequestDetail from './pages/requester/RequestDetail.jsx'
-import Profile from './pages/requester/Profile.jsx'
+import Profile from './pages/Profile.jsx'
 
 export default function App() {
   return (
@@ -64,6 +64,7 @@ export default function App() {
         <Route path="users" element={<UserManagement />} />
         <Route path="reports" element={<AdminReports />} />
         <Route path="settings" element={<SystemSettings />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
 
       <Route
