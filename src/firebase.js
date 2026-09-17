@@ -2,10 +2,10 @@
 //
 // Configuration is read from Vite env vars (see .env.example). Copy that file
 // to `.env` and fill in the values from your Firebase project before running
-// the app, otherwise Firestore reads/writes will fail.
+// the app, otherwise Firestore/Auth reads/writes will fail.
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getAuth } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -33,8 +33,7 @@ if (!isFirebaseConfigured && import.meta.env.DEV) {
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 
-// Used by the Approvals pages for the "Google SSO Verification" step: an
-// approver signs in with Google, and Firestore rules check their email
-// against the "approvers" collection before allowing an approve/reject write.
+// Email/Password sign-in for the login/registration flow. Requires the
+// "Email/Password" provider to be enabled in Firebase Console ->
+// Authentication -> Sign-in method.
 export const auth = getAuth(app)
-export const googleProvider = new GoogleAuthProvider()

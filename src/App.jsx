@@ -1,29 +1,87 @@
 import { Routes, Route } from 'react-router-dom'
-import Layout from './components/Layout.jsx'
-import Dashboard from './pages/Dashboard.jsx'
-import Assets from './pages/Assets.jsx'
-import Categories from './pages/Categories.jsx'
-import Suppliers from './pages/Suppliers.jsx'
-import Reports from './pages/Reports.jsx'
-import Approvals from './pages/Approvals.jsx'
-import ApprovalDetail from './pages/ApprovalDetail.jsx'
-import { useAssets } from './hooks/useAssets.js'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
+import AdminLayout from './components/AdminLayout.jsx'
+import RequesterLayout from './components/RequesterLayout.jsx'
+import RoleRedirect from './pages/RoleRedirect.jsx'
+
+import Login from './pages/auth/Login.jsx'
+import Register from './pages/auth/Register.jsx'
+import ForgotPassword from './pages/auth/ForgotPassword.jsx'
+
+import AdminDashboard from './pages/admin/Dashboard.jsx'
+import AdminAssetRequests from './pages/admin/AssetRequests.jsx'
+import Level1Approvals from './pages/admin/Level1Approvals.jsx'
+import Level2Approvals from './pages/admin/Level2Approvals.jsx'
+import RidManagement from './pages/admin/RidManagement.jsx'
+import TeamQueue from './pages/admin/TeamQueue.jsx'
+import TechnicianActions from './pages/admin/TechnicianActions.jsx'
+import StockInventory from './pages/admin/StockInventory.jsx'
+import AssetInformation from './pages/admin/AssetInformation.jsx'
+import FatForms from './pages/admin/FatForms.jsx'
+import UserSignOff from './pages/admin/UserSignOff.jsx'
+import OfficerSignOff from './pages/admin/OfficerSignOff.jsx'
+import ClosedRids from './pages/admin/ClosedRids.jsx'
+import UserManagement from './pages/admin/UserManagement.jsx'
+import AdminReports from './pages/admin/Reports.jsx'
+import SystemSettings from './pages/admin/SystemSettings.jsx'
+
+import AssetRequestForm from './pages/requester/AssetRequestForm.jsx'
+import MyRequests from './pages/requester/MyRequests.jsx'
+import RequestStatus from './pages/requester/RequestStatus.jsx'
+import RequestDetail from './pages/requester/RequestDetail.jsx'
+import Profile from './pages/requester/Profile.jsx'
 
 export default function App() {
-  // Single shared subscription so every page reflects the same live data.
-  const assetsState = useAssets()
-
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard {...assetsState} />} />
-        <Route path="/assets" element={<Assets {...assetsState} />} />
-        <Route path="/categories" element={<Categories {...assetsState} />} />
-        <Route path="/suppliers" element={<Suppliers {...assetsState} />} />
-        <Route path="/reports" element={<Reports {...assetsState} />} />
-        <Route path="/approvals" element={<Approvals />} />
-        <Route path="/approvals/:id" element={<ApprovalDetail />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+
+      <Route path="/" element={<RoleRedirect />} />
+
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute role="admin">
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="requests" element={<AdminAssetRequests />} />
+        <Route path="approvals/level1" element={<Level1Approvals />} />
+        <Route path="approvals/level2" element={<Level2Approvals />} />
+        <Route path="rid" element={<RidManagement />} />
+        <Route path="queue" element={<TeamQueue />} />
+        <Route path="technician" element={<TechnicianActions />} />
+        <Route path="inventory" element={<StockInventory />} />
+        <Route path="asset-info" element={<AssetInformation />} />
+        <Route path="fat" element={<FatForms />} />
+        <Route path="signoff/user" element={<UserSignOff />} />
+        <Route path="signoff/officer" element={<OfficerSignOff />} />
+        <Route path="closed" element={<ClosedRids />} />
+        <Route path="users" element={<UserManagement />} />
+        <Route path="reports" element={<AdminReports />} />
+        <Route path="settings" element={<SystemSettings />} />
       </Route>
+
+      <Route
+        path="/requester"
+        element={
+          <ProtectedRoute role="requester">
+            <RequesterLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="assets" element={<AssetRequestForm />} />
+        <Route path="my-requests" element={<MyRequests />} />
+        <Route path="requests/:id" element={<RequestDetail />} />
+        <Route path="status" element={<RequestStatus />} />
+        <Route path="profile" element={<Profile />} />
+      </Route>
+
+      <Route path="*" element={<RoleRedirect />} />
     </Routes>
   )
 }

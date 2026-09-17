@@ -3,35 +3,76 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Inventory catalog. Still open for read/write since the app has no
-    // login for regular browsing/editing (matches the original prototype).
-    // Before deploying anywhere public, restrict writes to signed-in users,
-    // e.g.: allow write: if request.auth != null;
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // User profiles: users/{uid}
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Registration: a user may only create THEIR OWN profile document,
+      // and it must be created with role "requester". This — not anything
+      // in the UI — is the real enforcement behind "a normal user must
+      // never be able to assign themselves the admin role": even a
+      // hand-crafted request straight to Firestore is rejected if it tries
+      // role: "admin" on create.
+      allow create: if isSignedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.role == 'requester';
+
+      // A user can update their own profile, but not their own role —
+      // changing role requires isAdmin() (User Management promotes/demotes
+      // other accounts, never a user promoting themself).
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && request.resource.data.role == resource.data.role) ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Inventory catalog. Read stays open (matches the original prototype);
+    // writes now require an admin since real accounts/roles exist.
     match /assets/{assetId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // Allowlist of approver emails for the asset-request workflow. A doc
-    // existing at approvers/{email} means that email can approve/reject
-    // requests. Managed directly in the Firebase console/CLI — never
-    // writable from a client.
-    match /approvers/{approverId} {
-      allow read: if request.auth != null;
-      allow write: if false;
-    }
-
-    // Asset requests created by the Google Form -> Apps Script workflow.
-    // Apps Script writes these via a service account using the Firestore
-    // REST API, which authenticates through Google Cloud IAM and bypasses
-    // these rules entirely (the same way the Admin SDK does) — so `create`
-    // is blocked here to stop anyone from forging a request straight from
-    // the browser. Only a signed-in approver can update (approve/reject) one.
+    // The asset request lifecycle document.
     match /assetRequests/{requestId} {
-      allow read: if request.auth != null;
-      allow create: if false;
-      allow update: if request.auth != null &&
-        exists(/databases/$(database)/documents/approvers/$(request.auth.token.email));
-      allow delete: if false;
+      allow read: if isSignedIn() && (resource.data.requesterId == request.auth.uid || isAdmin());
+
+      // A requester may only create a request for themself, and it must
+      // start at exactly the right initial status — closing off any
+      // attempt to submit a request that's already "approved".
+      allow create: if isSignedIn() &&
+        request.resource.data.requesterId == request.auth.uid &&
+        request.resource.data.status == 'Pending Level 1 Approval';
+
+      // Admins can advance a request through every stage (approvals, RID,
+      // stock, FAT, officer sign-off, closing). The one non-admin case: the
+      // owning requester may perform their own sign-off, and only that
+      // exact transition — every other identifying field must stay put.
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          resource.data.requesterId == request.auth.uid &&
+          resource.data.status == 'Awaiting User Sign-Off' &&
+          request.resource.data.status == 'Awaiting Approving Officer Sign-Off' &&
+          request.resource.data.requesterId == resource.data.requesterId &&
+          request.resource.data.rid == resource.data.rid &&
+          request.resource.data.quantity == resource.data.quantity
+        )
+      );
+
+      allow delete: if isAdmin();
     }
   }
 }
