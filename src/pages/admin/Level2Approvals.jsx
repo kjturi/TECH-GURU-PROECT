@@ -48,27 +48,38 @@ export default function Level2Approvals() {
                 <th>Asset</th>
                 <th>Qty</th>
                 <th>Level 1 by</th>
+                <th>Designated Approver</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {pending.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.requesterName}</td>
-                  <td>{r.department}</td>
-                  <td>{r.assetType}</td>
-                  <td>{r.quantity}</td>
-                  <td>{r.level1?.approverName || '—'}</td>
-                  <td className="actions-cell">
-                    <button className="btn btn-primary" onClick={() => setDialog({ request: r, action: 'approve' })} style={{ marginRight: 8 }}>
-                      Approve &amp; Raise RID
-                    </button>
-                    <button className="btn btn-danger" onClick={() => setDialog({ request: r, action: 'reject' })}>
-                      Reject
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {pending.map((r) => {
+                const isMine = r.nextApprovingManagerId === user.uid
+                return (
+                  <tr key={r.id}>
+                    <td>{r.requesterName}</td>
+                    <td>{r.department}</td>
+                    <td>{r.assetType}</td>
+                    <td>{r.quantity}</td>
+                    <td>{r.level1?.approverName || '—'}</td>
+                    <td>{r.nextApprovingManagerName || '—'}</td>
+                    <td className="actions-cell">
+                      {isMine ? (
+                        <>
+                          <button className="btn btn-primary" onClick={() => setDialog({ request: r, action: 'approve' })} style={{ marginRight: 8 }}>
+                            Approve &amp; Raise RID
+                          </button>
+                          <button className="btn btn-danger" onClick={() => setDialog({ request: r, action: 'reject' })}>
+                            Reject
+                          </button>
+                        </>
+                      ) : (
+                        <span className="badge">Awaiting {r.nextApprovingManagerName || 'designated approver'}</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

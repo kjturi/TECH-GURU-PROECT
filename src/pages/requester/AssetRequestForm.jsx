@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
+import { useAdmins } from '../../hooks/useAdmins.js'
 import { PRIORITIES } from '../../data/requestStatuses.js'
 import {
   TITLES,
@@ -45,8 +46,8 @@ function emptyForm(profile) {
     priority: 'Medium',
     dateRequired: '',
     comments: '',
-    immediateManager: '',
-    nextApprovingManager: '',
+    immediateManagerId: '',
+    nextApprovingManagerId: '',
     declarationAccepted: false,
     telephoneDetails: emptyTelephoneDetails(),
   }
@@ -60,6 +61,7 @@ function toggleIn(arr, value) {
 export default function AssetRequestForm() {
   const { user, profile } = useAuth()
   const { submitRequest } = useRequests({ uid: user.uid, isAdmin: false })
+  const { admins, loading: adminsLoading } = useAdmins()
   const navigate = useNavigate()
 
   const [form, setForm] = useState(() => emptyForm(profile))
@@ -87,14 +89,26 @@ export default function AssetRequestForm() {
       setError('Please fill in asset type, description, justification, and date required.')
       return
     }
+    if (!form.immediateManagerId || !form.nextApprovingManagerId) {
+      setError('Please select both an Immediate Manager and a Next Approving Manager.')
+      return
+    }
     if (!form.declarationAccepted) {
       setError('You must accept the declaration before submitting.')
       return
     }
 
+    const immediateManager = admins.find((a) => a.id === form.immediateManagerId)
+    const nextApprovingManager = admins.find((a) => a.id === form.nextApprovingManagerId)
+
     setSubmitting(true)
     try {
-      await submitRequest(user, { ...form, requesterName: `${form.firstName} ${form.surname}`.trim() })
+      await submitRequest(user, {
+        ...form,
+        requesterName: `${form.firstName} ${form.surname}`.trim(),
+        immediateManagerName: immediateManager?.name || '',
+        nextApprovingManagerName: nextApprovingManager?.name || '',
+      })
       setSuccess(true)
       setForm(emptyForm(profile))
     } catch (err) {
@@ -288,21 +302,34 @@ export default function AssetRequestForm() {
           <fieldset className="form-fieldset">
             <legend>Approvers</legend>
             <p style={{ marginBottom: 10, color: '#6b7280', fontSize: '0.88rem' }}>
-              Please consult your immediate Team Leader or Manager before naming them here — this is
-              informational for the approval stages and doesn't replace the app's own Level 1 / Level 2 approval workflow.
+              These are the actual approvers for this request: your Immediate Manager decides the
+              Level 1 approval, and your Next Approving Manager decides the Level 2 approval — only
+              the person you pick here will be able to act on each stage.
             </p>
-            <div className="asset-form">
-              <input
-                placeholder="Immediate Manager / Delegate"
-                value={form.immediateManager}
-                onChange={(e) => set('immediateManager', e.target.value)}
-              />
-              <input
-                placeholder="Next Approving Manager / Delegate"
-                value={form.nextApprovingManager}
-                onChange={(e) => set('nextApprovingManager', e.target.value)}
-              />
-            </div>
+            {adminsLoading ? (
+              <p className="state-msg">Loading approvers…</p>
+            ) : admins.length === 0 ? (
+              <p className="state-msg error">No admin accounts are registered yet, so there's no one to approve this request. Contact your administrator.</p>
+            ) : (
+              <div className="asset-form">
+                <select
+                  value={form.immediateManagerId}
+                  onChange={(e) => set('immediateManagerId', e.target.value)}
+                  required
+                >
+                  <option value="">Immediate Manager (Level 1 approver)</option>
+                  {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <select
+                  value={form.nextApprovingManagerId}
+                  onChange={(e) => set('nextApprovingManagerId', e.target.value)}
+                  required
+                >
+                  <option value="">Next Approving Manager (Level 2 approver)</option>
+                  {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            )}
           </fieldset>
 
           <fieldset className="form-fieldset">

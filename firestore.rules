@@ -15,7 +15,14 @@ service cloud.firestore {
 
     // User profiles: users/{uid}
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Anyone signed in can see a doc if it's their own, if they're an
+      // admin, OR if the doc itself is an admin's — that last clause is
+      // what lets the Asset Request Form list admins to pick as Level 1 /
+      // Level 2 approvers, without exposing every requester's profile to
+      // every other signed-in user.
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || isAdmin() || resource.data.role == 'admin'
+      );
 
       // Registration: a user may only create THEIR OWN profile document,
       // and it must be created with role "requester". This — not anything
@@ -51,17 +58,46 @@ service cloud.firestore {
 
       // A requester may only create a request for themself, and it must
       // start at exactly the right initial status — closing off any
-      // attempt to submit a request that's already "approved".
+      // attempt to submit a request that's already "approved". A real,
+      // registered admin must be named for both approval stages so the
+      // request can actually move; those two ids are what the Level 1 /
+      // Level 2 update rules below check against.
       allow create: if isSignedIn() &&
         request.resource.data.requesterId == request.auth.uid &&
-        request.resource.data.status == 'Pending Level 1 Approval';
+        request.resource.data.status == 'Pending Level 1 Approval' &&
+        request.resource.data.immediateManagerId is string &&
+        request.resource.data.immediateManagerId != '' &&
+        request.resource.data.nextApprovingManagerId is string &&
+        request.resource.data.nextApprovingManagerId != '';
 
-      // Admins can advance a request through every stage (approvals, RID,
-      // stock, FAT, officer sign-off, closing). The one non-admin case: the
-      // owning requester may perform their own sign-off, and only that
-      // exact transition — every other identifying field must stay put.
       allow update: if isSignedIn() && (
-        isAdmin() ||
+        // Level 1 approval/rejection: only the specific admin named as
+        // Immediate Manager on THIS request can act on it — not any admin.
+        (
+          resource.data.status == 'Pending Level 1 Approval' &&
+          request.auth.uid == resource.data.immediateManagerId &&
+          request.resource.data.status in ['Pending Level 2 Approval', 'Rejected']
+        ) ||
+
+        // Level 2 approval/rejection: only the specific admin named as
+        // Next Approving Manager on THIS request can act on it.
+        (
+          resource.data.status == 'Pending Level 2 Approval' &&
+          request.auth.uid == resource.data.nextApprovingManagerId &&
+          request.resource.data.status in ['RID Raised', 'Rejected']
+        ) ||
+
+        // Every other stage (RID assignment, stock, FAT, officer sign-off,
+        // closing) stays open to any admin, same as before — explicitly
+        // excluding the two pending-approval statuses above so a random
+        // admin can't reach around the designated-approver checks.
+        (
+          isAdmin() &&
+          resource.data.status != 'Pending Level 1 Approval' &&
+          resource.data.status != 'Pending Level 2 Approval'
+        ) ||
+
+        // The owning requester's own sign-off — unchanged from before.
         (
           resource.data.requesterId == request.auth.uid &&
           resource.data.status == 'Awaiting User Sign-Off' &&

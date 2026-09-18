@@ -11,10 +11,10 @@ export default function RequestTimeline({ request, onSignOff, signingOff }) {
         <h2 style={{ marginBottom: 0 }}>{request.assetType} {request.rid ? `— ${request.rid}` : ''}</h2>
         <StatusBadge status={request.status} />
       </div>
-      {(request.immediateManager || request.nextApprovingManager) && (
+      {(request.immediateManagerName || request.nextApprovingManagerName) && (
         <p style={{ marginBottom: 8, fontSize: '0.9rem' }}>
-          {request.immediateManager && <>Immediate Manager: <strong>{request.immediateManager}</strong>. </>}
-          {request.nextApprovingManager && <>Next Approving Manager: <strong>{request.nextApprovingManager}</strong>.</>}
+          {request.immediateManagerName && <>Level 1 approver: <strong>{request.immediateManagerName}</strong>. </>}
+          {request.nextApprovingManagerName && <>Level 2 approver: <strong>{request.nextApprovingManagerName}</strong>.</>}
         </p>
       )}
 
