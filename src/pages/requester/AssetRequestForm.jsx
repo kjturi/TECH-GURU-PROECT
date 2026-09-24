@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
 import { useAdmins } from '../../hooks/useAdmins.js'
 import { PRIORITIES } from '../../data/requestStatuses.js'
+import { ADMIN_PERMISSIONS, hasAdminPermission } from '../../data/adminPermissions.js'
 import {
   TITLES,
   COUNTRIES,
@@ -61,7 +62,8 @@ function toggleIn(arr, value) {
 export default function AssetRequestForm() {
   const { user, profile } = useAuth()
   const { submitRequest } = useRequests({ uid: user.uid, isAdmin: false })
-  const { admins, loading: adminsLoading } = useAdmins()
+  const { admins: allAdmins, loading: adminsLoading } = useAdmins()
+  const admins = allAdmins.filter((a) => hasAdminPermission(a, ADMIN_PERMISSIONS.APPROVE_REQUESTS))
   const navigate = useNavigate()
 
   const [form, setForm] = useState(() => emptyForm(profile))

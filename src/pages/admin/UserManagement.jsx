@@ -4,20 +4,66 @@ import DataState from '../../components/DataState.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useUsers } from '../../hooks/useUsers.js'
+import { ADMIN_PERMISSIONS, ADMIN_PERMISSION_LABELS } from '../../data/adminPermissions.js'
 
-// This is the only place a user's role can change to/from admin — and it's
-// only reachable by an existing admin (route-guarded), with the same rule
-// re-enforced server-side in firestore.rules.
+const PERMISSION_KEYS = Object.values(ADMIN_PERMISSIONS)
+
+function PermissionCheckboxes({ selected, onChange }) {
+  return (
+    <div className="field-group" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+      {PERMISSION_KEYS.map((perm) => (
+        <label key={perm} className="checkbox-inline">
+          <input
+            type="checkbox"
+            checked={selected.includes(perm)}
+            onChange={() => onChange(selected.includes(perm) ? selected.filter((p) => p !== perm) : [...selected, perm])}
+          />
+          {ADMIN_PERMISSION_LABELS[perm]}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function PermissionBadges({ user }) {
+  if (user.role !== 'admin') return '—'
+  if (user.permissions === undefined) return <span className="badge">All (legacy admin)</span>
+  if (user.permissions.length === 0) return <span className="badge badge-pending">None granted</span>
+  return user.permissions.map((p) => (
+    <span key={p} className="badge" style={{ marginRight: 4 }}>{p}</span>
+  ))
+}
+
+// This is the only place a user's role or permissions can change — and it's
+// only reachable by an admin with the "manage_users" permission
+// (route-guarded via RequirePermission), with the same rule re-enforced
+// server-side in firestore.rules.
 export default function UserManagement() {
   const { user: currentUser } = useAuth()
-  const { users, loading, error, setRole } = useUsers(true)
-  const [dialog, setDialog] = useState(null) // { user, nextRole }
+  const { users, loading, error, setRole, setPermissions } = useUsers(true)
+  const [dialog, setDialog] = useState(null) // { action: 'promote' | 'revoke' | 'edit', user, permissions }
   const [busy, setBusy] = useState(false)
+
+  function openPromote(u) {
+    setDialog({ action: 'promote', user: u, permissions: [] })
+  }
+  function openRevoke(u) {
+    setDialog({ action: 'revoke', user: u })
+  }
+  function openEdit(u) {
+    setDialog({ action: 'edit', user: u, permissions: u.permissions ?? PERMISSION_KEYS })
+  }
 
   async function handleConfirm() {
     setBusy(true)
     try {
-      await setRole(dialog.user.id, dialog.nextRole)
+      if (dialog.action === 'promote') {
+        await setRole(dialog.user.id, 'admin', dialog.permissions)
+      } else if (dialog.action === 'revoke') {
+        await setRole(dialog.user.id, 'requester')
+      } else {
+        await setPermissions(dialog.user.id, dialog.permissions)
+      }
       setDialog(null)
     } finally {
       setBusy(false)
@@ -31,7 +77,7 @@ export default function UserManagement() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Department</th><th>Employee ID</th><th>Role</th><th></th></tr>
+              <tr><th>Name</th><th>Email</th><th>Department</th><th>Employee ID</th><th>Role</th><th>Permissions</th><th></th></tr>
             </thead>
             <tbody>
               {users.map((u) => (
@@ -41,15 +87,21 @@ export default function UserManagement() {
                   <td>{u.department}</td>
                   <td>{u.employeeId}</td>
                   <td style={{ textTransform: 'capitalize' }}>{u.role}</td>
+                  <td><PermissionBadges user={u} /></td>
                   <td className="actions-cell">
                     {u.id === currentUser.uid ? (
                       <span className="badge">You</span>
                     ) : u.role === 'admin' ? (
-                      <button className="btn btn-danger" onClick={() => setDialog({ user: u, nextRole: 'requester' })}>
-                        Revoke Admin
-                      </button>
+                      <>
+                        <button className="btn btn-secondary" onClick={() => openEdit(u)} style={{ marginRight: 8 }}>
+                          Edit Permissions
+                        </button>
+                        <button className="btn btn-danger" onClick={() => openRevoke(u)}>
+                          Revoke Admin
+                        </button>
+                      </>
                     ) : (
-                      <button className="btn btn-primary" onClick={() => setDialog({ user: u, nextRole: 'admin' })}>
+                      <button className="btn btn-primary" onClick={() => openPromote(u)}>
                         Promote to Admin
                       </button>
                     )}
@@ -63,20 +115,30 @@ export default function UserManagement() {
 
       <ConfirmDialog
         open={!!dialog}
-        title={dialog?.nextRole === 'admin' ? 'Grant admin access?' : 'Revoke admin access?'}
-        message={
-          dialog
-            ? dialog.nextRole === 'admin'
-              ? `${dialog.user.name} will gain full access to every admin section of this app.`
-              : `${dialog.user.name} will lose admin access and become a requester.`
-            : ''
+        title={
+          dialog?.action === 'promote' ? 'Grant admin access?'
+          : dialog?.action === 'revoke' ? 'Revoke admin access?'
+          : 'Edit permissions'
         }
-        confirmLabel={dialog?.nextRole === 'admin' ? 'Promote' : 'Revoke'}
-        danger={dialog?.nextRole !== 'admin'}
+        message={
+          dialog?.action === 'promote' ? `${dialog.user.name} becomes an admin with exactly the permissions checked below.`
+          : dialog?.action === 'revoke' ? `${dialog.user.name} will lose admin access and become a requester.`
+          : dialog?.action === 'edit' ? `Adjust what ${dialog.user.name} can access as an admin.`
+          : ''
+        }
+        confirmLabel={dialog?.action === 'promote' ? 'Promote' : dialog?.action === 'revoke' ? 'Revoke' : 'Save'}
+        danger={dialog?.action === 'revoke'}
         busy={busy}
         onConfirm={handleConfirm}
         onCancel={() => setDialog(null)}
-      />
+      >
+        {(dialog?.action === 'promote' || dialog?.action === 'edit') && (
+          <PermissionCheckboxes
+            selected={dialog.permissions}
+            onChange={(next) => setDialog((d) => ({ ...d, permissions: next }))}
+          />
+        )}
+      </ConfirmDialog>
     </>
   )
 }

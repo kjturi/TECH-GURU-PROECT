@@ -30,9 +30,17 @@ export function useUsers(enabled) {
     return () => unsubscribe()
   }, [enabled])
 
-  const setRole = useCallback(async (userId, role) => {
-    await updateDoc(doc(db, 'users', userId), { role })
+  /** `permissions`, when given, is written in the same update as `role` — used
+   * when promoting someone so the grant happens atomically with the promotion. */
+  const setRole = useCallback(async (userId, role, permissions) => {
+    const payload = { role }
+    if (permissions !== undefined) payload.permissions = permissions
+    await updateDoc(doc(db, 'users', userId), payload)
   }, [])
 
-  return { users, loading, error, setRole }
+  const setPermissions = useCallback(async (userId, permissions) => {
+    await updateDoc(doc(db, 'users', userId), { permissions })
+  }, [])
+
+  return { users, loading, error, setRole, setPermissions }
 }

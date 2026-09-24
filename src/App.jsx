@@ -1,8 +1,10 @@
 import { Routes, Route } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import RequirePermission from './components/RequirePermission.jsx'
 import AdminLayout from './components/AdminLayout.jsx'
 import RequesterLayout from './components/RequesterLayout.jsx'
 import RoleRedirect from './pages/RoleRedirect.jsx'
+import { ADMIN_PERMISSIONS } from './data/adminPermissions.js'
 
 import Login from './pages/auth/Login.jsx'
 import Register from './pages/auth/Register.jsx'
@@ -50,8 +52,14 @@ export default function App() {
       >
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="requests" element={<AdminAssetRequests />} />
-        <Route path="approvals/level1" element={<Level1Approvals />} />
-        <Route path="approvals/level2" element={<Level2Approvals />} />
+        <Route
+          path="approvals/level1"
+          element={<RequirePermission permission={ADMIN_PERMISSIONS.APPROVE_REQUESTS}><Level1Approvals /></RequirePermission>}
+        />
+        <Route
+          path="approvals/level2"
+          element={<RequirePermission permission={ADMIN_PERMISSIONS.APPROVE_REQUESTS}><Level2Approvals /></RequirePermission>}
+        />
         <Route path="rid" element={<RidManagement />} />
         <Route path="queue" element={<TeamQueue />} />
         <Route path="technician" element={<TechnicianActions />} />
@@ -61,7 +69,10 @@ export default function App() {
         <Route path="signoff/user" element={<UserSignOff />} />
         <Route path="signoff/officer" element={<OfficerSignOff />} />
         <Route path="closed" element={<ClosedRids />} />
-        <Route path="users" element={<UserManagement />} />
+        <Route
+          path="users"
+          element={<RequirePermission permission={ADMIN_PERMISSIONS.MANAGE_USERS}><UserManagement /></RequirePermission>}
+        />
         <Route path="reports" element={<AdminReports />} />
         <Route path="settings" element={<SystemSettings />} />
         <Route path="profile" element={<Profile />} />

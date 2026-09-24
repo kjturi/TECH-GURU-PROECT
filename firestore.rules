@@ -13,6 +13,20 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Sub-permission within the admin role (see src/data/adminPermissions.js).
+    // An admin doc with NO "permissions" field at all — every admin account
+    // created before this feature existed — is grandfathered in as having
+    // every permission, so introducing this can't lock out an admin who
+    // relied on unconditional access before today. A newly promoted admin
+    // gets an explicit permissions array instead, and is held to exactly
+    // what's listed there, even if it's empty.
+    function hasPermission(perm) {
+      return isAdmin() && (
+        !('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+        perm in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions
+      );
+    }
+
     // User profiles: users/{uid}
     match /users/{userId} {
       // Anyone signed in can see a doc if it's their own, if they're an
@@ -34,15 +48,20 @@ service cloud.firestore {
         request.auth.uid == userId &&
         request.resource.data.role == 'requester';
 
-      // A user can update their own profile, but not their own role —
-      // changing role requires isAdmin() (User Management promotes/demotes
-      // other accounts, never a user promoting themself).
+      // A user can update their own profile, but not their own role or
+      // permissions — changing either requires "manage_users" (User
+      // Management promotes/demotes and edits permissions on OTHER
+      // accounts; nobody can grant themself access this way).
       allow update: if isSignedIn() && (
-        (request.auth.uid == userId && request.resource.data.role == resource.data.role) ||
-        isAdmin()
+        (
+          request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.get('permissions', null) == resource.data.get('permissions', null)
+        ) ||
+        hasPermission('manage_users')
       );
 
-      allow delete: if isAdmin();
+      allow delete: if hasPermission('manage_users');
     }
 
     // Inventory catalog. Read stays open (matches the original prototype);
@@ -72,18 +91,22 @@ service cloud.firestore {
 
       allow update: if isSignedIn() && (
         // Level 1 approval/rejection: only the specific admin named as
-        // Immediate Manager on THIS request can act on it — not any admin.
+        // Immediate Manager on THIS request, and only while they currently
+        // hold "approve_requests" — being named isn't enough on its own if
+        // that permission was revoked after the request was submitted.
         (
           resource.data.status == 'Pending Level 1 Approval' &&
           request.auth.uid == resource.data.immediateManagerId &&
+          hasPermission('approve_requests') &&
           request.resource.data.status in ['Pending Level 2 Approval', 'Rejected']
         ) ||
 
         // Level 2 approval/rejection: only the specific admin named as
-        // Next Approving Manager on THIS request can act on it.
+        // Next Approving Manager on THIS request.
         (
           resource.data.status == 'Pending Level 2 Approval' &&
           request.auth.uid == resource.data.nextApprovingManagerId &&
+          hasPermission('approve_requests') &&
           request.resource.data.status in ['RID Raised', 'Rejected']
         ) ||
 
