@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
+import AuthLogo from '../../components/AuthLogo.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 
 const ERROR_MESSAGES = {
@@ -39,7 +40,7 @@ export default function Login() {
     setSubmitting(true)
     try {
       await login({ email: email.trim(), password, rememberMe })
-      navigate('/', { replace: true })
+      navigate('/app', { replace: true })
     } catch (err) {
       console.error('[Login] failed:', err)
       setError(ERROR_MESSAGES[err.code] || 'Unable to sign in. Please try again.')
@@ -52,7 +53,7 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="auth-logo" aria-hidden="true">{'▦'}</span>
+          <AuthLogo />
           <h1>Asset Request Manager</h1>
         </div>
 

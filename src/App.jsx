@@ -4,6 +4,7 @@ import RequirePermission from './components/RequirePermission.jsx'
 import AdminLayout from './components/AdminLayout.jsx'
 import RequesterLayout from './components/RequesterLayout.jsx'
 import RoleRedirect from './pages/RoleRedirect.jsx'
+import Landing from './pages/Landing.jsx'
 import { ADMIN_PERMISSIONS } from './data/adminPermissions.js'
 
 import Login from './pages/auth/Login.jsx'
@@ -17,9 +18,13 @@ import Level2Approvals from './pages/admin/Level2Approvals.jsx'
 import RidManagement from './pages/admin/RidManagement.jsx'
 import TeamQueue from './pages/admin/TeamQueue.jsx'
 import TechnicianActions from './pages/admin/TechnicianActions.jsx'
-import StockInventory from './pages/admin/StockInventory.jsx'
+import DeviceHub from './pages/admin/DeviceHub.jsx'
+import DeviceTypePage from './pages/admin/DeviceTypePage.jsx'
+import DeviceFatForm from './pages/admin/DeviceFatForm.jsx'
+import SimCards from './pages/admin/SimCards.jsx'
 import AssetInformation from './pages/admin/AssetInformation.jsx'
 import FatForms from './pages/admin/FatForms.jsx'
+import RequestFatForm from './pages/admin/RequestFatForm.jsx'
 import UserSignOff from './pages/admin/UserSignOff.jsx'
 import OfficerSignOff from './pages/admin/OfficerSignOff.jsx'
 import ClosedRids from './pages/admin/ClosedRids.jsx'
@@ -40,7 +45,11 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
 
-      <Route path="/" element={<RoleRedirect />} />
+      <Route path="/" element={<Landing />} />
+      {/* Where Login sends a freshly-authenticated user — waits for the
+          profile to load, then sends them to the right dashboard. "/" is
+          the public landing page now, so it can't double as this anymore. */}
+      <Route path="/app" element={<RoleRedirect />} />
 
       <Route
         path="/admin"
@@ -63,9 +72,13 @@ export default function App() {
         <Route path="rid" element={<RidManagement />} />
         <Route path="queue" element={<TeamQueue />} />
         <Route path="technician" element={<TechnicianActions />} />
-        <Route path="inventory" element={<StockInventory />} />
+        <Route path="inventory" element={<DeviceHub />} />
+        <Route path="inventory/:type" element={<DeviceTypePage />} />
+        <Route path="inventory/:type/:identifier/fat" element={<DeviceFatForm />} />
+        <Route path="sim-cards" element={<SimCards />} />
         <Route path="asset-info" element={<AssetInformation />} />
         <Route path="fat" element={<FatForms />} />
+        <Route path="requests/:id/fat" element={<RequestFatForm />} />
         <Route path="signoff/user" element={<UserSignOff />} />
         <Route path="signoff/officer" element={<OfficerSignOff />} />
         <Route path="closed" element={<ClosedRids />} />

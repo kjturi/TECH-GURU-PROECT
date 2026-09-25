@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import AuthLogo from '../../components/AuthLogo.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 
 export default function ForgotPassword() {
@@ -33,7 +34,7 @@ export default function ForgotPassword() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="auth-logo" aria-hidden="true">{'▦'}</span>
+          <AuthLogo />
           <h1>Reset your password</h1>
         </div>
 

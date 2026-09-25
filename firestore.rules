@@ -64,9 +64,36 @@ service cloud.firestore {
       allow delete: if hasPermission('manage_users');
     }
 
-    // Inventory catalog. Read stays open (matches the original prototype);
-    // writes now require an admin since real accounts/roles exist.
+    // Inventory catalog (generic quantity-based stock). Kept in place for
+    // rollback/history even though Stock/Inventory no longer routes to it —
+    // see devices/purchaseOrders/simCards below, which replaced it as the
+    // live inventory model. Same open-read/admin-write posture as before.
     match /assets/{assetId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Serialized device inventory (CUG mobiles, headsets, desk phones, WiFi
+    // modems) — ported from GDPCapstone's per-type MySQL tables into one
+    // collection distinguished by `type`. Same open-read/admin-write
+    // posture as `assets` had.
+    match /devices/{deviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // PO Number -> Invoice Number pairs (ported from GDPCapstone's
+    // `orderform` table). The "one invoice per PO" rule itself is enforced
+    // in the client transaction in useDevices.js, not here — same trust
+    // boundary as the rest of an admin-only write.
+    match /purchaseOrders/{poNumber} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // CUG SIM cards (ported from GDPCapstone's `cugsimcards` table),
+    // optionally linked to a `devices` doc by IMEI.
+    match /simCards/{spid} {
       allow read: if true;
       allow write: if isAdmin();
     }

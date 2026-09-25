@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
+import AuthLogo from '../../components/AuthLogo.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { DEPARTMENTS } from '../../data/requestStatuses.js'
 import { TITLES, COUNTRIES } from '../../data/assetCategories.js'
@@ -89,7 +90,7 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card" style={{ maxWidth: 460 }}>
         <div className="auth-brand">
-          <span className="auth-logo" aria-hidden="true">{'▦'}</span>
+          <AuthLogo />
           <h1>Create your account</h1>
         </div>
 

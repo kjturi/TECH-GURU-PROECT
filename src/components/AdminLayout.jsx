@@ -26,6 +26,7 @@ const ADMIN_LINKS = [
   { to: '/admin/queue', label: 'Team Queue', icon: '≡' },
   { to: '/admin/technician', label: 'Technician Actions', icon: '◈' },
   { to: '/admin/inventory', label: 'Stock / Inventory', icon: '▣' },
+  { to: '/admin/sim-cards', label: 'SIM Cards', icon: '▨' },
   { to: '/admin/asset-info', label: 'Asset Information', icon: '◉' },
   { to: '/admin/fat', label: 'FAT Forms', icon: '▥' },
 

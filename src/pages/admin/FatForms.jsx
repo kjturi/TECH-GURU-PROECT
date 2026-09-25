@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import DataState from '../../components/DataState.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
@@ -86,7 +87,7 @@ export default function FatForms() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>RID</th><th>Asset</th><th>Issued By</th><th>Status</th></tr>
+                <tr><th>RID</th><th>Asset</th><th>Issued By</th><th>Status</th><th></th></tr>
               </thead>
               <tbody>
                 {compiled.map((r) => (
@@ -95,6 +96,9 @@ export default function FatForms() {
                     <td>{r.assetType}</td>
                     <td>{r.fat.issuedBy}</td>
                     <td><StatusBadge status={r.status} /></td>
+                    <td className="actions-cell">
+                      <Link className="btn btn-secondary" to={`/admin/requests/${r.id}/fat`}>View / Print</Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
