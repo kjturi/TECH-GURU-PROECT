@@ -14,7 +14,7 @@ export default function RidManagement() {
 
   return (
     <>
-      <Topbar title="RID Management" />
+      <Topbar title="Request Management" />
       <DataState loading={loading} error={error} empty={!loading && !error && withRid.length === 0}>
         <div className="table-wrap">
           <table>

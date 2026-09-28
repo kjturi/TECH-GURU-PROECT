@@ -25,7 +25,7 @@ export default function RequestDetail() {
   return (
     <>
       <Topbar title="Request Details" />
-      <p style={{ marginBottom: 16 }}><Link to="/requester/my-requests">&larr; Back to My Requests</Link></p>
+      <p style={{ marginBottom: 16 }}><Link to="/requester/requests">&larr; Back to Requests</Link></p>
 
       {loading && <p className="state-msg">Loading…</p>}
       {!loading && !request && <p className="state-msg error">Request not found.</p>}

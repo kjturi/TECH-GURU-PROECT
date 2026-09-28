@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth'
 import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 import { auth, db, isFirebaseConfigured } from '../firebase'
+import { STAFF_ROLES } from '../data/adminPermissions.js'
 
 const AuthContext = createContext(null)
 
@@ -142,7 +143,14 @@ export function AuthProvider({ children }) {
     user,
     profile,
     role,
+    // isAdmin stays strictly "the plain admin role" — this is the flag a
+    // handful of places (e.g. UserManagement's own full-access check) rely
+    // on meaning the unrestricted, grandfathered role, not "any staff
+    // member". Use isStaff for "is in the admin area at all".
     isAdmin: role === 'admin',
+    isTechnicianAdmin: role === 'technician_admin',
+    isInventoryAdmin: role === 'inventory_admin',
+    isStaff: STAFF_ROLES.includes(role),
     isRequester: role === 'requester',
     initializing,
     authError,

@@ -1,22 +1,49 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
-import { useDeviceCounts } from '../../hooks/useDevices.js'
+import DataState from '../../components/DataState.jsx'
+import { useDeviceCounts, useAllDevices } from '../../hooks/useDevices.js'
 import { useSimCards } from '../../hooks/useSimCards.js'
-import { DEVICE_TYPES, DEVICE_TYPE_KEYS } from '../../data/deviceTypes.js'
+import { DEVICE_TYPES, DEVICE_TYPE_KEYS, deviceType } from '../../data/deviceTypes.js'
 
-// Ported from GDPCapstone/partials/asset_hub.php — a card per device type
-// with a live count, linking into that type's list/add page. SIM cards get
-// the same treatment as a sixth card rather than a plain link below.
+function money(n) {
+  return `K${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+// Ported from GDPCapstone/partials/asset_hub.php (the type cards) and
+// dashboard.php (the Total Assets banner + combined all-types table) — one
+// page showing everything, rather than only being able to see one type at
+// a time.
 export default function DeviceHub() {
   const { counts, loading } = useDeviceCounts()
   const { sims, loading: simsLoading } = useSimCards()
+  const { devices, loading: devicesLoading } = useAllDevices()
+  const [search, setSearch] = useState('')
+
+  const totalValue = devices.reduce((sum, d) => sum + (Number(d.price) || 0), 0)
+
+  const filtered = useMemo(() => {
+    const term = search.toLowerCase()
+    return devices.filter((d) =>
+      [d.identifier, d.serialNumber, d.brand, d.model, d.poNumber, deviceType(d.type)?.label]
+        .join(' ')
+        .toLowerCase()
+        .includes(term)
+    )
+  }, [devices, search])
 
   return (
     <>
-      <Topbar title="Stock / Inventory" />
-      <p style={{ marginBottom: 20, color: '#6b7280' }}>
-        Choose a device type. Every type uses the same form: Invoice, PO Number, identifier, Brand, Model and Unit Price.
-      </p>
+      <Topbar title="Stock / Inventory" search={search} onSearchChange={setSearch} searchPlaceholder="Search all devices..." />
+
+      <div className="inventory-total-banner">
+        <div>
+          <h3>Total Assets</h3>
+          <p>{devicesLoading ? '…' : devices.length}</p>
+        </div>
+        <span>Total value {devicesLoading ? '…' : money(totalValue)}</span>
+      </div>
+
       <div className="cards">
         {DEVICE_TYPE_KEYS.map((key) => {
           const t = DEVICE_TYPES[key]
@@ -50,6 +77,42 @@ export default function DeviceHub() {
             Manage
           </Link>
         </div>
+      </div>
+
+      <div className="panel">
+        <h2>All Devices</h2>
+        <DataState loading={devicesLoading} error={null} empty={!devicesLoading && filtered.length === 0}>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>PO Number</th>
+                  <th>IMEI / Serial</th>
+                  <th>Brand</th>
+                  <th>Model</th>
+                  <th>Unit Price</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((d) => (
+                  <tr key={d.id}>
+                    <td><span className="badge">{deviceType(d.type)?.label || d.type}</span></td>
+                    <td>{d.poNumber || '—'}</td>
+                    <td>{d.identifier}</td>
+                    <td>{d.brand || '—'}</td>
+                    <td>{d.model || '—'}</td>
+                    <td>{d.price != null ? money(d.price) : '—'}</td>
+                    <td className="actions-cell">
+                      <Link className="btn btn-secondary" to={`/admin/inventory/${d.type}`}>Manage</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DataState>
       </div>
     </>
   )

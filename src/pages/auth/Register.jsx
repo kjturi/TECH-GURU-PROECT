@@ -77,7 +77,7 @@ export default function Register() {
         country: form.country,
         password: form.password,
       })
-      navigate('/requester/assets', { replace: true })
+      navigate('/requester/home', { replace: true })
     } catch (err) {
       console.error('[Register] failed:', err)
       setError(ERROR_MESSAGES[err.code] || 'Unable to create your account. Please try again.')

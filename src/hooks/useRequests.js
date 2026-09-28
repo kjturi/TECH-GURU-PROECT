@@ -72,7 +72,7 @@ export function useRequests(viewer) {
   // --- Requester actions -----------------------------------------------
 
   const submitRequest = useCallback(async (requester, form) => {
-    await addDoc(collection(db, COLLECTION), {
+    return addDoc(collection(db, COLLECTION), {
       requesterId: requester.uid,
       requesterName: form.requesterName,
       employeeId: form.employeeId,

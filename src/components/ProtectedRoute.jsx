@@ -3,7 +3,9 @@ import { useAuth } from '../contexts/AuthContext.jsx'
 
 const HOME_BY_ROLE = {
   admin: '/admin/dashboard',
-  requester: '/requester/assets',
+  technician_admin: '/admin/dashboard',
+  inventory_admin: '/admin/dashboard',
+  requester: '/requester/home',
 }
 
 /**

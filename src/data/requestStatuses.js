@@ -63,3 +63,56 @@ export const DEPARTMENTS = [
   'Support',
   'Other',
 ]
+
+// Statuses after which a request no longer needs anything from anyone.
+export const FINISHED_STATUSES = [STATUS.COLLECTED, STATUS.CLOSED, STATUS.REJECTED]
+
+export function isActiveRequest(request) {
+  return !FINISHED_STATUSES.includes(request.status)
+}
+
+/**
+ * Plain-language "what happens next" for a requester looking at one of
+ * their own requests. `actionNeeded` flags the one stage that's waiting on
+ * the requester themself rather than on IT or an approver.
+ */
+export function nextStepFor(request) {
+  switch (request.status) {
+    case STATUS.PENDING_L1:
+      return { text: `Waiting for ${request.immediateManagerName || 'your immediate manager'} to approve.` }
+    case STATUS.PENDING_L2:
+      return { text: `Waiting for ${request.nextApprovingManagerName || 'your next approving manager'} to approve.` }
+    case STATUS.REJECTED:
+      return {
+        text: `Not approved at ${request.rejection?.stage === 'level2' ? 'Level 2' : 'Level 1'}` +
+          (request.rejection?.reason ? `: ${request.rejection.reason}` : '.'),
+      }
+    case STATUS.RID_RAISED:
+      return { text: 'Approved. A technician will be assigned shortly.' }
+    case STATUS.ASSIGNED_TECH:
+      return { text: `${request.assignedTechnicianName || 'A technician'} is checking stock.` }
+    case STATUS.PENDING_STOCK:
+      return { text: 'Out of stock right now — IT will issue it as soon as new stock arrives.' }
+    case STATUS.ASSET_AVAILABLE:
+    case STATUS.FAT_PREPARED:
+      return { text: 'Your asset is reserved. IT is preparing your FAT form.' }
+    case STATUS.AWAITING_USER_SIGNOFF:
+      return { text: 'Your FAT form is ready — review it and sign off to continue.', actionNeeded: true }
+    case STATUS.AWAITING_OFFICER_SIGNOFF:
+      return { text: 'Waiting for the approving officer to sign off.' }
+    case STATUS.READY_FOR_COLLECTION:
+      return { text: 'Ready! Collect your asset from the IT office.' }
+    case STATUS.COLLECTED:
+      return { text: 'Collected — it now appears under My Assets.' }
+    case STATUS.CLOSED:
+      return { text: 'Completed and closed.' }
+    default:
+      return { text: '' }
+  }
+}
+
+export function formatDate(value) {
+  const d = value?.toDate ? value.toDate() : value ? new Date(value) : null
+  if (!d || Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}

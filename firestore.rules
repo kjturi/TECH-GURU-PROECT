@@ -13,52 +13,100 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Sub-permission within the admin role (see src/data/adminPermissions.js).
+    // Any of the three staff roles — the ones that get into the /admin
+    // shell at all. Mirrors STAFF_ROLES in src/data/adminPermissions.js.
+    function isStaff() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'technician_admin', 'inventory_admin'];
+    }
+
+    // Sub-permission within a staff role (see src/data/adminPermissions.js).
     // An admin doc with NO "permissions" field at all — every admin account
     // created before this feature existed — is grandfathered in as having
     // every permission, so introducing this can't lock out an admin who
-    // relied on unconditional access before today. A newly promoted admin
-    // gets an explicit permissions array instead, and is held to exactly
-    // what's listed there, even if it's empty.
+    // relied on unconditional access before today. A newly promoted admin,
+    // and every Technician Admin / Inventory Admin account (both brand new
+    // roles — there's no legacy version of either), gets an explicit
+    // permissions array instead, and is held to exactly what's listed there,
+    // even if it's empty.
     function hasPermission(perm) {
-      return isAdmin() && (
-        !('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
-        perm in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions
+      return isStaff() && (
+        (isAdmin() && !('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)) ||
+        (
+          ('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) &&
+          perm in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions
+        )
       );
+    }
+
+    // True if `field` holds the same value before and after this write (a
+    // field missing on both sides counts as unchanged too). Used to pin
+    // down ownership/content fields on assetRequests so a status update can
+    // never smuggle in a change to who a request belongs to or what it's
+    // for.
+    function fieldUnchanged(field) {
+      return request.resource.data.get(field, null) == resource.data.get(field, null);
     }
 
     // User profiles: users/{uid}
     match /users/{userId} {
       // Anyone signed in can see a doc if it's their own, if they're an
-      // admin, OR if the doc itself is an admin's — that last clause is
-      // what lets the Asset Request Form list admins to pick as Level 1 /
-      // Level 2 approvers, without exposing every requester's profile to
-      // every other signed-in user.
+      // admin, if they can provision Technician Admins (Inventory Admin
+      // needs the full users list to do that from User Management), OR if
+      // the doc itself is an admin's — that last clause is what lets the
+      // Asset Request Form list admins to pick as Level 1 / Level 2
+      // approvers, without exposing every requester's profile to every
+      // other signed-in user.
       allow read: if isSignedIn() && (
-        request.auth.uid == userId || isAdmin() || resource.data.role == 'admin'
+        request.auth.uid == userId ||
+        isAdmin() ||
+        hasPermission('provision_technicians') ||
+        resource.data.role == 'admin'
       );
 
       // Registration: a user may only create THEIR OWN profile document,
       // and it must be created with role "requester". This — not anything
       // in the UI — is the real enforcement behind "a normal user must
-      // never be able to assign themselves the admin role": even a
+      // never be able to assign themselves an elevated role": even a
       // hand-crafted request straight to Firestore is rejected if it tries
-      // role: "admin" on create.
+      // role: "admin" (or "technician_admin"/"inventory_admin") on create.
       allow create: if isSignedIn() &&
         request.auth.uid == userId &&
         request.resource.data.role == 'requester';
 
       // A user can update their own profile, but not their own role or
-      // permissions — changing either requires "manage_users" (User
-      // Management promotes/demotes and edits permissions on OTHER
-      // accounts; nobody can grant themself access this way).
+      // permissions — changing either requires "manage_users" (full user
+      // management) or, narrowly, "provision_technicians". Nobody can grant
+      // themself access this way: the self-update branch below requires
+      // role/permissions to stay exactly as they were.
       allow update: if isSignedIn() && (
         (
           request.auth.uid == userId &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.get('permissions', null) == resource.data.get('permissions', null)
         ) ||
-        hasPermission('manage_users')
+        hasPermission('manage_users') ||
+        // Inventory Admin's scoped provisioning right: may flip a user
+        // between "requester" and "technician_admin" ONLY (an existing
+        // admin/inventory_admin account is untouchable this way), and when
+        // landing on technician_admin the permissions written must be
+        // exactly the fixed bundle for that role — never a hand-picked or
+        // elevated set. Mirrors ROLE_DEFAULT_PERMISSIONS.technician_admin
+        // in src/data/adminPermissions.js — keep both in sync.
+        (
+          hasPermission('provision_technicians') &&
+          request.auth.uid != userId &&
+          resource.data.role in ['requester', 'technician_admin'] &&
+          request.resource.data.role in ['requester', 'technician_admin'] &&
+          (
+            (
+              request.resource.data.role == 'technician_admin' &&
+              request.resource.data.permissions == ['manage_assets', 'manage_sims', 'manage_requests']
+            ) ||
+            request.resource.data.role == 'requester'
+          )
+        )
       );
 
       allow delete: if hasPermission('manage_users');
@@ -75,88 +123,116 @@ service cloud.firestore {
 
     // Serialized device inventory (CUG mobiles, headsets, desk phones, WiFi
     // modems) — ported from GDPCapstone's per-type MySQL tables into one
-    // collection distinguished by `type`. Same open-read/admin-write
-    // posture as `assets` had.
+    // collection distinguished by `type`. Read is staff-only: a unit carries
+    // assignedToRequestId, so open reads would let anyone map serial numbers
+    // to other people's requests. Requesters see their own issued assets
+    // through assetRequests.assetInfo (owner-scoped) instead. Write is also
+    // open to "manage_assets" (Technician Admin's core job).
     match /devices/{deviceId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasPermission('manage_assets');
     }
 
     // PO Number -> Invoice Number pairs (ported from GDPCapstone's
     // `orderform` table). The "one invoice per PO" rule itself is enforced
     // in the client transaction in useDevices.js, not here — same trust
-    // boundary as the rest of an admin-only write.
+    // boundary as the rest of a manage_assets-gated write.
     match /purchaseOrders/{poNumber} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasPermission('manage_assets');
     }
 
     // CUG SIM cards (ported from GDPCapstone's `cugsimcards` table),
-    // optionally linked to a `devices` doc by IMEI.
+    // optionally linked to a `devices` doc by IMEI. Both Technician Admin
+    // and Inventory Admin hold "manage_sims".
     match /simCards/{spid} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasPermission('manage_sims');
     }
 
     // The asset request lifecycle document.
     match /assetRequests/{requestId} {
-      allow read: if isSignedIn() && (resource.data.requesterId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid || isAdmin() || hasPermission('manage_requests')
+      );
 
       // A requester may only create a request for themself, and it must
       // start at exactly the right initial status — closing off any
       // attempt to submit a request that's already "approved". A real,
       // registered admin must be named for both approval stages so the
       // request can actually move; those two ids are what the Level 1 /
-      // Level 2 update rules below check against.
+      // Level 2 update rules below check against. The declaration ("I have
+      // read... and agree to abide by the terms and conditions", shown as a
+      // required checkbox on the request form) is enforced here too — the
+      // UI already refuses to submit without it, but until now nothing
+      // stopped a direct write to the API from skipping it.
       allow create: if isSignedIn() &&
         request.resource.data.requesterId == request.auth.uid &&
         request.resource.data.status == 'Pending Level 1 Approval' &&
         request.resource.data.immediateManagerId is string &&
         request.resource.data.immediateManagerId != '' &&
         request.resource.data.nextApprovingManagerId is string &&
-        request.resource.data.nextApprovingManagerId != '';
+        request.resource.data.nextApprovingManagerId != '' &&
+        request.resource.data.declarationAccepted == true &&
+        request.resource.data.declarationAcceptedAt != null;
 
-      allow update: if isSignedIn() && (
-        // Level 1 approval/rejection: only the specific admin named as
-        // Immediate Manager on THIS request, and only while they currently
-        // hold "approve_requests" — being named isn't enough on its own if
-        // that permission was revoked after the request was submitted.
+      // Ownership and request content can never change as a side effect of
+      // a status update, by anyone, at any stage — only the fields each
+      // workflow action actually needs to touch (status, rid, and the
+      // stage-specific detail object) are left out of this list.
+      allow update: if isSignedIn() &&
+        fieldUnchanged('requesterId') && fieldUnchanged('requesterName') && fieldUnchanged('requesterEmail') &&
+        fieldUnchanged('employeeId') && fieldUnchanged('department') &&
+        fieldUnchanged('assetType') && fieldUnchanged('description') && fieldUnchanged('quantity') &&
+        fieldUnchanged('justification') && fieldUnchanged('priority') && fieldUnchanged('dateRequired') &&
+        fieldUnchanged('immediateManagerId') && fieldUnchanged('nextApprovingManagerId') &&
+        fieldUnchanged('createdAt') &&
         (
-          resource.data.status == 'Pending Level 1 Approval' &&
-          request.auth.uid == resource.data.immediateManagerId &&
-          hasPermission('approve_requests') &&
-          request.resource.data.status in ['Pending Level 2 Approval', 'Rejected']
-        ) ||
+          // Level 1 approval/rejection: only the specific admin named as
+          // Immediate Manager on THIS request, and only while they currently
+          // hold "approve_requests" — being named isn't enough on its own if
+          // that permission was revoked after the request was submitted.
+          (
+            resource.data.status == 'Pending Level 1 Approval' &&
+            request.auth.uid == resource.data.immediateManagerId &&
+            hasPermission('approve_requests') &&
+            request.resource.data.status in ['Pending Level 2 Approval', 'Rejected'] &&
+            fieldUnchanged('rid')
+          ) ||
 
-        // Level 2 approval/rejection: only the specific admin named as
-        // Next Approving Manager on THIS request.
-        (
-          resource.data.status == 'Pending Level 2 Approval' &&
-          request.auth.uid == resource.data.nextApprovingManagerId &&
-          hasPermission('approve_requests') &&
-          request.resource.data.status in ['RID Raised', 'Rejected']
-        ) ||
+          // Level 2 approval/rejection: only the specific admin named as
+          // Next Approving Manager on THIS request. This is the one place
+          // `rid` is allowed to change — from null to the newly-raised id.
+          (
+            resource.data.status == 'Pending Level 2 Approval' &&
+            request.auth.uid == resource.data.nextApprovingManagerId &&
+            hasPermission('approve_requests') &&
+            request.resource.data.status in ['RID Raised', 'Rejected']
+          ) ||
 
-        // Every other stage (RID assignment, stock, FAT, officer sign-off,
-        // closing) stays open to any admin, same as before — explicitly
-        // excluding the two pending-approval statuses above so a random
-        // admin can't reach around the designated-approver checks.
-        (
-          isAdmin() &&
-          resource.data.status != 'Pending Level 1 Approval' &&
-          resource.data.status != 'Pending Level 2 Approval'
-        ) ||
+          // Every other stage (RID assignment, stock, FAT, officer sign-off,
+          // closing) stays open to any admin OR "manage_requests" holder
+          // (Technician Admin, Inventory Admin) — explicitly excluding the
+          // two pending-approval statuses above so nobody can reach around
+          // the designated-approver checks.
+          (
+            (isAdmin() || hasPermission('manage_requests')) &&
+            resource.data.status != 'Pending Level 1 Approval' &&
+            resource.data.status != 'Pending Level 2 Approval' &&
+            fieldUnchanged('rid')
+          ) ||
 
-        // The owning requester's own sign-off — unchanged from before.
-        (
-          resource.data.requesterId == request.auth.uid &&
-          resource.data.status == 'Awaiting User Sign-Off' &&
-          request.resource.data.status == 'Awaiting Approving Officer Sign-Off' &&
-          request.resource.data.requesterId == resource.data.requesterId &&
-          request.resource.data.rid == resource.data.rid &&
-          request.resource.data.quantity == resource.data.quantity
-        )
-      );
+          // The owning requester's own sign-off — unchanged from before.
+          (
+            resource.data.requesterId == request.auth.uid &&
+            resource.data.status == 'Awaiting User Sign-Off' &&
+            request.resource.data.status == 'Awaiting Approving Officer Sign-Off' &&
+            request.resource.data.requesterId == resource.data.requesterId &&
+            request.resource.data.rid == resource.data.rid &&
+            request.resource.data.quantity == resource.data.quantity &&
+            fieldUnchanged('rid')
+          )
+        );
 
       allow delete: if isAdmin();
     }
