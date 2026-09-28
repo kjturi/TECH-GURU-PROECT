@@ -89,7 +89,9 @@ function SummaryItem({ label, value }) {
 /**
  * A collapsible "pick one/some" group for Telephone and UC Request Details —
  * see src/index.css's "option-picker"/"option-btn" rules for the styling
- * this relies on.
+ * this relies on. Only one group is open at a time, and every pick (single
+ * or multi) closes it again, leaving the choices summarized as chips; a
+ * multi-select group is reopened from its heading to add or remove more.
  */
 function OptionPicker({ label, options, icons, selected, multi, onToggle, open, onToggleOpen }) {
   const isSelected = (opt) => (multi ? selected.includes(opt) : selected === opt)
@@ -99,7 +101,7 @@ function OptionPicker({ label, options, icons, selected, multi, onToggle, open, 
     <div className="option-picker">
       <button type="button" className="option-picker-heading" onClick={onToggleOpen} aria-expanded={open}>
         <span className="option-picker-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
-        <span className="field-group-label" style={{ margin: 0 }}>{label}</span>
+        <span className="option-picker-label">{label}</span>
         {!open && chosen.map((opt) => (
           <span key={opt} className="option-chip">
             <span aria-hidden="true">{icons[opt]}</span> {opt}
@@ -137,7 +139,7 @@ export default function RequestWizard() {
 
   const [step, setStep] = useState(1) // 1 details, 2 choose, 3 review, 4 done
   const [form, setForm] = useState(() => emptyForm(profile))
-  const [openGroups, setOpenGroups] = useState(() => new Set())
+  const [openGroup, setOpenGroup] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [submittedId, setSubmittedId] = useState(null)
@@ -151,31 +153,19 @@ export default function RequestWizard() {
     setForm((f) => ({ ...f, telephoneDetails: { ...f.telephoneDetails, [field]: value } }))
   }
   function toggleOpenGroup(key) {
-    setOpenGroups((prev) => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }
-  function closeGroup(key) {
-    setOpenGroups((prev) => {
-      if (!prev.has(key)) return prev
-      const next = new Set(prev)
-      next.delete(key)
-      return next
-    })
+    setOpenGroup((current) => (current === key ? null : key))
   }
   function toggleMulti(field, value) {
     setTelephone(field, toggleIn(form.telephoneDetails[field], value))
+    setOpenGroup(null)
   }
   function pickSingle(field, value) {
     setTelephone(field, value)
-    closeGroup(field)
+    setOpenGroup(null)
   }
   function toggleWebex() {
-    const next = !form.telephoneDetails.webexRequested
-    setTelephone('webexRequested', next)
-    if (next) closeGroup('webex')
+    setTelephone('webexRequested', !form.telephoneDetails.webexRequested)
+    setOpenGroup(null)
   }
 
   function selectAssetType(key) {
@@ -245,7 +235,7 @@ export default function RequestWizard() {
 
   function startAnother() {
     setForm(emptyForm(profile))
-    setOpenGroups(new Set())
+    setOpenGroup(null)
     setSubmittedId(null)
     goTo(1)
   }
@@ -374,37 +364,37 @@ export default function RequestWizard() {
                     label="Type of Request" options={TELEPHONE_REQUEST_TYPES} icons={TELEPHONE_REQUEST_ICONS}
                     selected={form.telephoneDetails.requestTypes} multi
                     onToggle={(v) => toggleMulti('requestTypes', v)}
-                    open={openGroups.has('requestTypes')} onToggleOpen={() => toggleOpenGroup('requestTypes')}
+                    open={openGroup === 'requestTypes'} onToggleOpen={() => toggleOpenGroup('requestTypes')}
                   />
                   <OptionPicker
                     label="Handset Type" options={HANDSET_TYPES} icons={HANDSET_TYPE_ICONS}
                     selected={form.telephoneDetails.handsetType}
                     onToggle={(v) => pickSingle('handsetType', v)}
-                    open={openGroups.has('handsetType')} onToggleOpen={() => toggleOpenGroup('handsetType')}
+                    open={openGroup === 'handsetType'} onToggleOpen={() => toggleOpenGroup('handsetType')}
                   />
                   <OptionPicker
                     label="Headset Request" options={HEADSET_OPTIONS} icons={HEADSET_ICONS}
                     selected={form.telephoneDetails.headsetRequired}
                     onToggle={(v) => pickSingle('headsetRequired', v)}
-                    open={openGroups.has('headsetRequired')} onToggleOpen={() => toggleOpenGroup('headsetRequired')}
+                    open={openGroup === 'headsetRequired'} onToggleOpen={() => toggleOpenGroup('headsetRequired')}
                   />
                   <OptionPicker
                     label="Extension Access" options={EXTENSION_ACCESS_OPTIONS} icons={EXTENSION_ACCESS_ICONS}
                     selected={form.telephoneDetails.extensionAccess} multi
                     onToggle={(v) => toggleMulti('extensionAccess', v)}
-                    open={openGroups.has('extensionAccess')} onToggleOpen={() => toggleOpenGroup('extensionAccess')}
+                    open={openGroup === 'extensionAccess'} onToggleOpen={() => toggleOpenGroup('extensionAccess')}
                   />
                   <OptionPicker
                     label="UC Request" options={['Webex']} icons={UC_REQUEST_ICONS}
                     selected={form.telephoneDetails.webexRequested ? ['Webex'] : []} multi
                     onToggle={toggleWebex}
-                    open={openGroups.has('webex')} onToggleOpen={() => toggleOpenGroup('webex')}
+                    open={openGroup === 'webex'} onToggleOpen={() => toggleOpenGroup('webex')}
                   />
                   <OptionPicker
                     label="Call Centre & IT Helpdesk" options={CALL_CENTRE_OPTIONS} icons={CALL_CENTRE_ICONS}
                     selected={form.telephoneDetails.callCentreAccess} multi
                     onToggle={(v) => toggleMulti('callCentreAccess', v)}
-                    open={openGroups.has('callCentreAccess')} onToggleOpen={() => toggleOpenGroup('callCentreAccess')}
+                    open={openGroup === 'callCentreAccess'} onToggleOpen={() => toggleOpenGroup('callCentreAccess')}
                   />
                 </fieldset>
               )}

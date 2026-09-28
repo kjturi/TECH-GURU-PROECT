@@ -227,6 +227,12 @@ table td.actions-cell {
 .option-picker-heading:hover {
   background: var(--accent-light);
 }
+.option-picker-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #4b5563;
+  margin-right: 4px;
+}
 .option-picker-chevron {
   color: var(--accent-dark);
   font-size: 0.75rem;
