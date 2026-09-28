@@ -1,8 +1,8 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext.jsx'
+import { NavLink, Outlet } from 'react-router-dom'
+import TopNavUser from './TopNavUser.jsx'
 import bspLogo from '../assets/bsp-logo.jpg'
 
-// Requesters get a simple top bar instead of the admin sidebar — three
+// Requesters get a simple top bar with just three
 // destinations only. Route guards (ProtectedRoute) and Firestore rules are
 // still what actually limit access; this is just navigation.
 const REQUESTER_LINKS = [
@@ -12,16 +12,8 @@ const REQUESTER_LINKS = [
 ]
 
 export default function RequesterLayout() {
-  const { profile, user, logout } = useAuth()
-  const navigate = useNavigate()
-
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
-    <div className="requester-shell">
+    <div className="app-shell">
       <header className="topnav">
         <div className="topnav-inner">
           <NavLink to="/requester/home" className="topnav-brand">
@@ -37,16 +29,11 @@ export default function RequesterLayout() {
             ))}
           </nav>
 
-          <div className="topnav-user">
-            <NavLink to="/requester/profile" className="topnav-name" title="Your profile">
-              {profile?.name || user?.email}
-            </NavLink>
-            <button className="btn btn-secondary" onClick={handleLogout}>Logout</button>
-          </div>
+          <TopNavUser profilePath="/requester/profile" />
         </div>
       </header>
 
-      <main className="requester-main">
+      <main className="app-main">
         <Outlet />
       </main>
     </div>

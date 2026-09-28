@@ -1,6 +1,5 @@
 import { Outlet } from 'react-router-dom'
-import Sidebar from './Sidebar.jsx'
-import Header from './Header.jsx'
+import AdminTopNav from './AdminTopNav.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { ADMIN_PERMISSIONS, canAccess } from '../data/adminPermissions.js'
 
@@ -73,12 +72,11 @@ export default function AdminLayout() {
   const { profile } = useAuth()
 
   return (
-    <div className="app-layout">
-      <Sidebar title="Admin" links={visibleLinks(profile)} />
-      <div className="main">
-        <Header />
+    <div className="app-shell">
+      <AdminTopNav title="Admin" links={visibleLinks(profile)} />
+      <main className="app-main app-main-wide">
         <Outlet />
-      </div>
+      </main>
     </div>
   )
 }

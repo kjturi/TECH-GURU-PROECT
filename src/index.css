@@ -17,120 +17,6 @@ body {
   color: #1f2937;
 }
 
-/* Layout */
-.app-layout {
-  display: flex;
-}
-
-/* Sidebar */
-.sidebar {
-  width: 240px;
-  background: var(--navy-900);
-  color: #fff;
-  height: 100vh;
-  padding: 20px;
-  position: fixed;
-  overflow-y: auto;
-}
-.sidebar h2 {
-  margin-bottom: 24px;
-  font-size: 1.3rem;
-  text-align: center;
-  color: #e2e8f0;
-  letter-spacing: 0.02em;
-}
-.sidebar ul {
-  list-style: none;
-}
-.sidebar ul li {
-  margin: 4px 0;
-}
-.sidebar ul li a {
-  color: #cbd5e1;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border-radius: 6px;
-  transition: 0.2s;
-  font-size: 0.92rem;
-}
-.sidebar ul li a:hover {
-  background: var(--navy-700);
-  color: #fff;
-}
-.sidebar ul li a.active {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-.nav-icon {
-  width: 18px;
-  flex-shrink: 0;
-  display: inline-flex;
-  justify-content: center;
-  opacity: 0.9;
-}
-.nav-label {
-  line-height: 1.25;
-}
-.nav-group {
-  margin-top: 6px;
-}
-.nav-heading-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 10px 12px 8px;
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 700;
-  font-family: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: #6ee7b7;
-  opacity: 0.85;
-  border-radius: 6px;
-  transition: 0.2s;
-}
-.nav-heading-toggle:hover {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.06);
-}
-.nav-chevron {
-  font-size: 0.7rem;
-}
-
-/* Main content */
-.main {
-  margin-left: 240px;
-  padding: 20px;
-  flex: 1;
-  min-width: 0;
-}
-
-/* Header (user info + logout) */
-.app-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.app-header-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.app-header-name {
-  font-weight: 600;
-  color: var(--navy-800);
-}
 .role-pill {
   text-transform: capitalize;
   font-size: 0.78rem;
@@ -899,17 +785,6 @@ table td.actions-cell {
 }
 
 @media (max-width: 720px) {
-  .sidebar {
-    position: static;
-    width: 100%;
-    height: auto;
-  }
-  .main {
-    margin-left: 0;
-  }
-  .app-layout {
-    flex-direction: column;
-  }
   .profile-list {
     grid-template-columns: 1fr;
     row-gap: 4px;
@@ -1282,12 +1157,13 @@ table td.actions-cell {
 }
 
 @media print {
-  .sidebar, .app-header, .fat-toolbar {
+  .topnav, .fat-toolbar {
     display: none !important;
   }
-  .main, .fat-page {
+  .app-main, .fat-page {
     margin: 0 !important;
     padding: 0 !important;
+    max-width: none !important;
     background: #fff !important;
   }
   .fat-sheet {
@@ -1334,9 +1210,9 @@ table td.actions-cell {
 }
 
 /* ---------------------------------------------------------------------
-   Requester shell — top navigation instead of the sidebar
+   App shell — top navigation (requester and admin)
    --------------------------------------------------------------------- */
-.requester-shell {
+.app-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -1412,7 +1288,7 @@ table td.actions-cell {
 .topnav-name:hover {
   text-decoration: underline;
 }
-.requester-main {
+.app-main {
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
@@ -1622,7 +1498,7 @@ table td.actions-cell {
     text-align: center;
     padding: 9px 6px;
   }
-  .requester-main {
+  .app-main {
     padding: 20px 16px 40px;
   }
   .welcome {
@@ -1638,5 +1514,134 @@ table td.actions-cell {
   }
   .request-card-head {
     flex-direction: column;
+  }
+}
+
+/* Admin top navigation — dropdown buttons in place of sidebar sections */
+.app-main-wide {
+  max-width: 1440px;
+}
+.topnav-admin .topnav-inner {
+  max-width: 1440px;
+  gap: 18px;
+}
+.topnav-admin .topnav-links {
+  gap: 4px;
+}
+.topnav-admin .topnav-link {
+  padding: 9px 12px;
+}
+.nav-icon {
+  width: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  justify-content: center;
+  opacity: 0.8;
+}
+.nav-chevron {
+  font-size: 0.75rem;
+  transition: transform 0.2s;
+}
+.topnav-dropdown {
+  position: relative;
+}
+.topnav-dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.topnav-dropdown.open .topnav-dropdown-toggle {
+  background: var(--accent-light);
+  color: var(--navy-800);
+}
+.topnav-dropdown.open .nav-chevron {
+  transform: rotate(180deg);
+}
+.topnav-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 250px;
+  list-style: none;
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+  border: 1px solid var(--accent-light);
+  z-index: 30;
+}
+.topnav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  color: #1f2937;
+  text-decoration: none;
+  font-size: 0.93rem;
+  white-space: nowrap;
+}
+.topnav-menu-item:hover {
+  background: var(--accent-light);
+}
+.topnav-menu-item.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.topnav-menu-toggle {
+  display: none;
+}
+
+@media (max-width: 1280px) {
+  .topnav-admin .topnav-inner {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .topnav-admin .topnav-menu-toggle {
+    display: inline-block;
+    order: 2;
+  }
+  .topnav-admin .topnav-user {
+    order: 1;
+    margin-left: auto;
+  }
+  .topnav-admin .topnav-links {
+    display: none;
+    order: 3;
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 0 4px;
+    border-top: 1px solid var(--accent-light);
+  }
+  .topnav-admin .topnav-links.open {
+    display: flex;
+  }
+  .topnav-admin .topnav-link {
+    text-align: left;
+    flex: none;
+    width: 100%;
+    justify-content: space-between;
+    padding: 11px 12px;
+  }
+  .topnav-admin .topnav-menu {
+    position: static;
+    box-shadow: none;
+    border: none;
+    padding: 2px 0 6px 12px;
+    min-width: 0;
+  }
+  .topnav-admin .topnav-menu-item {
+    white-space: normal;
+  }
+}
+@media (max-width: 720px) {
+  .topnav-admin .role-pill {
+    display: none;
   }
 }
