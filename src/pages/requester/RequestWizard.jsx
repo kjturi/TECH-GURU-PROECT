@@ -9,12 +9,9 @@ import { PRIORITIES, STATUS } from '../../data/requestStatuses.js'
 import { ADMIN_PERMISSIONS, hasAdminPermission } from '../../data/adminPermissions.js'
 import { DEVICE_TYPES, DEVICE_TYPE_KEYS } from '../../data/deviceTypes.js'
 import {
-  TELEPHONE_REQUEST_TYPES,
-  HANDSET_TYPES,
   HEADSET_OPTIONS,
   EXTENSION_ACCESS_OPTIONS,
   CALL_CENTRE_OPTIONS,
-  TELEPHONE_REQUEST_ICONS,
   HANDSET_TYPE_ICONS,
   HEADSET_ICONS,
   EXTENSION_ACCESS_ICONS,
@@ -25,13 +22,64 @@ import {
 
 // One icon per catalog card — same "creative but professional" pictograph
 // treatment as the Telephone/UC option pickers below.
-const CATALOG_ICONS = { cug: '📱', headset: '🎧', deskphone: '📞', vodafone: '📶', digicel: '🔌' }
+const CATALOG_ICONS = { cug: '📱', headset: '🎧', deskphone: '📞', vodafone: '📶', digicel: '🔌', uc: '☎️' }
 
-// Only these catalog types get the Telephone/UC configuration step — they're
-// the ones that section's options (handset type, extensions, Webex, call
-// centre access) actually apply to. Vodafone/Digicel are data modems, and a
-// free-text "Something else" request has no structured config to offer.
-const SHOWS_TELEPHONY_CONFIG = ['cug', 'headset', 'deskphone']
+// A catalog card for access-only requests (softphone, Webex, extension or
+// call-centre access) — not a physical device, so it isn't in DEVICE_TYPES.
+const UC_CARD = {
+  key: 'uc',
+  label: 'Phone Line & UC Access',
+  description: 'Softphone, Webex, extension or call-centre access — no device needed.',
+}
+
+// What "Configure this request" asks for each card, and what the card
+// already answers on its own. Picking "CUG Mobiles" already says the
+// request type is mobile, and "Desk Phones" already says telephone +
+// deskphone handset, so those are filled in (`implied`) instead of asked
+// again. Cards not listed here (Headsets, modems, Something else) have no
+// configure step and save no telephoneDetails at all.
+const CARD_CONFIG = {
+  cug: {
+    implied: { requestTypes: ['Mobile Phone/Wireless'] },
+    ask: ['extensionAccess'],
+  },
+  deskphone: {
+    implied: { requestTypes: ['Telephone'], handsetType: 'Deskphone' },
+    ask: ['headsetRequired', 'extensionAccess'],
+  },
+  uc: {
+    implied: { requestTypes: ['Telephone'] },
+    ask: ['softphone', 'headsetRequired', 'extensionAccess', 'webex', 'callCentreAccess'],
+  },
+}
+
+// Only the fields this card actually asked, plus what the card implies —
+// so switching cards mid-form can never leave stale answers behind.
+function buildTelephoneDetails(assetTypeKey, details) {
+  const config = CARD_CONFIG[assetTypeKey]
+  if (!config) return null
+  const asked = new Set(config.ask)
+  return {
+    ...emptyTelephoneDetails(),
+    handsetType: asked.has('softphone') ? details.handsetType : '',
+    headsetRequired: asked.has('headsetRequired') ? details.headsetRequired : '',
+    extensionAccess: asked.has('extensionAccess') ? details.extensionAccess : [],
+    webexRequested: asked.has('webex') ? details.webexRequested : false,
+    callCentreAccess: asked.has('callCentreAccess') ? details.callCentreAccess : [],
+    ...config.implied,
+  }
+}
+
+function describeTelephoneDetails(details) {
+  if (!details) return []
+  return [
+    details.handsetType === 'Softphone' && 'Softphone',
+    details.headsetRequired && `Headset: ${details.headsetRequired}`,
+    details.extensionAccess.length > 0 && `Extension access: ${details.extensionAccess.join(', ')}`,
+    details.webexRequested && 'Webex',
+    details.callCentreAccess.length > 0 && `Call centre: ${details.callCentreAccess.join(', ')}`,
+  ].filter(Boolean)
+}
 
 const STEP_LABELS = ['Your Details', 'Choose an Asset', 'Review & Submit']
 
@@ -170,7 +218,13 @@ export default function RequestWizard() {
 
   function selectAssetType(key) {
     set('assetTypeKey', key)
-    set('assetType', key === 'other' ? '' : DEVICE_TYPES[key].label)
+    set('assetType', key === 'other' ? '' : key === UC_CARD.key ? UC_CARD.label : DEVICE_TYPES[key].label)
+    set('telephoneDetails', emptyTelephoneDetails())
+    setOpenGroup(null)
+  }
+  function toggleSoftphone() {
+    setTelephone('handsetType', form.telephoneDetails.handsetType === 'Softphone' ? '' : 'Softphone')
+    setOpenGroup(null)
   }
 
   function goTo(n) {
@@ -190,8 +244,14 @@ export default function RequestWizard() {
   ].filter(Boolean)
 
   // --- Step 2: Choose an Asset -----------------------------------------
+  const cardConfig = CARD_CONFIG[form.assetTypeKey]
+  const telephoneDetails = buildTelephoneDetails(form.assetTypeKey, form.telephoneDetails)
+  const telephoneSummary = describeTelephoneDetails(telephoneDetails)
+  // An access-only request has to ask for at least one kind of access.
+  const ucChoiceMissing = form.assetTypeKey === UC_CARD.key && telephoneSummary.length === 0
   const canProceedFromChoose =
     form.assetTypeKey &&
+    !ucChoiceMissing &&
     (form.assetTypeKey !== 'other' || form.assetType.trim()) &&
     Number(form.quantity) >= 1 &&
     form.dateRequired &&
@@ -219,6 +279,7 @@ export default function RequestWizard() {
     try {
       const ref = await submitRequest(user, {
         ...form,
+        telephoneDetails,
         requesterName: fullName,
         immediateManagerName: immediateManager?.name || '',
         nextApprovingManagerName: nextApprovingManager?.name || '',
@@ -311,6 +372,15 @@ export default function RequestWizard() {
             ))}
             <button
               type="button"
+              className={`asset-catalog-card${form.assetTypeKey === UC_CARD.key ? ' selected' : ''}`}
+              onClick={() => selectAssetType(UC_CARD.key)}
+            >
+              <span className="asset-catalog-icon" aria-hidden="true">{CATALOG_ICONS.uc}</span>
+              <span className="asset-catalog-label">{UC_CARD.label}</span>
+              <span className="asset-catalog-desc">{UC_CARD.description}</span>
+            </button>
+            <button
+              type="button"
               className={`asset-catalog-card${form.assetTypeKey === 'other' ? ' selected' : ''}`}
               onClick={() => selectAssetType('other')}
             >
@@ -357,45 +427,52 @@ export default function RequestWizard() {
                 />
               </div>
 
-              {SHOWS_TELEPHONY_CONFIG.includes(form.assetTypeKey) && (
+              {cardConfig && (
                 <fieldset className="form-fieldset">
                   <legend>Configure this request</legend>
-                  <OptionPicker
-                    label="Type of Request" options={TELEPHONE_REQUEST_TYPES} icons={TELEPHONE_REQUEST_ICONS}
-                    selected={form.telephoneDetails.requestTypes} multi
-                    onToggle={(v) => toggleMulti('requestTypes', v)}
-                    open={openGroup === 'requestTypes'} onToggleOpen={() => toggleOpenGroup('requestTypes')}
-                  />
-                  <OptionPicker
-                    label="Handset Type" options={HANDSET_TYPES} icons={HANDSET_TYPE_ICONS}
-                    selected={form.telephoneDetails.handsetType}
-                    onToggle={(v) => pickSingle('handsetType', v)}
-                    open={openGroup === 'handsetType'} onToggleOpen={() => toggleOpenGroup('handsetType')}
-                  />
-                  <OptionPicker
-                    label="Headset Request" options={HEADSET_OPTIONS} icons={HEADSET_ICONS}
-                    selected={form.telephoneDetails.headsetRequired}
-                    onToggle={(v) => pickSingle('headsetRequired', v)}
-                    open={openGroup === 'headsetRequired'} onToggleOpen={() => toggleOpenGroup('headsetRequired')}
-                  />
-                  <OptionPicker
-                    label="Extension Access" options={EXTENSION_ACCESS_OPTIONS} icons={EXTENSION_ACCESS_ICONS}
-                    selected={form.telephoneDetails.extensionAccess} multi
-                    onToggle={(v) => toggleMulti('extensionAccess', v)}
-                    open={openGroup === 'extensionAccess'} onToggleOpen={() => toggleOpenGroup('extensionAccess')}
-                  />
-                  <OptionPicker
-                    label="UC Request" options={['Webex']} icons={UC_REQUEST_ICONS}
-                    selected={form.telephoneDetails.webexRequested ? ['Webex'] : []} multi
-                    onToggle={toggleWebex}
-                    open={openGroup === 'webex'} onToggleOpen={() => toggleOpenGroup('webex')}
-                  />
-                  <OptionPicker
-                    label="Call Centre & IT Helpdesk" options={CALL_CENTRE_OPTIONS} icons={CALL_CENTRE_ICONS}
-                    selected={form.telephoneDetails.callCentreAccess} multi
-                    onToggle={(v) => toggleMulti('callCentreAccess', v)}
-                    open={openGroup === 'callCentreAccess'} onToggleOpen={() => toggleOpenGroup('callCentreAccess')}
-                  />
+                  {cardConfig.ask.includes('softphone') && (
+                    <OptionPicker
+                      label="Softphone" options={['Softphone']} icons={HANDSET_TYPE_ICONS}
+                      selected={form.telephoneDetails.handsetType === 'Softphone' ? ['Softphone'] : []} multi
+                      onToggle={toggleSoftphone}
+                      open={openGroup === 'softphone'} onToggleOpen={() => toggleOpenGroup('softphone')}
+                    />
+                  )}
+                  {cardConfig.ask.includes('headsetRequired') && (
+                    <OptionPicker
+                      label="Add a Headset?" options={HEADSET_OPTIONS} icons={HEADSET_ICONS}
+                      selected={form.telephoneDetails.headsetRequired}
+                      onToggle={(v) => pickSingle('headsetRequired', v)}
+                      open={openGroup === 'headsetRequired'} onToggleOpen={() => toggleOpenGroup('headsetRequired')}
+                    />
+                  )}
+                  {cardConfig.ask.includes('extensionAccess') && (
+                    <OptionPicker
+                      label="Extension Access" options={EXTENSION_ACCESS_OPTIONS} icons={EXTENSION_ACCESS_ICONS}
+                      selected={form.telephoneDetails.extensionAccess} multi
+                      onToggle={(v) => toggleMulti('extensionAccess', v)}
+                      open={openGroup === 'extensionAccess'} onToggleOpen={() => toggleOpenGroup('extensionAccess')}
+                    />
+                  )}
+                  {cardConfig.ask.includes('webex') && (
+                    <OptionPicker
+                      label="UC Request" options={['Webex']} icons={UC_REQUEST_ICONS}
+                      selected={form.telephoneDetails.webexRequested ? ['Webex'] : []} multi
+                      onToggle={toggleWebex}
+                      open={openGroup === 'webex'} onToggleOpen={() => toggleOpenGroup('webex')}
+                    />
+                  )}
+                  {cardConfig.ask.includes('callCentreAccess') && (
+                    <OptionPicker
+                      label="Call Centre & IT Helpdesk" options={CALL_CENTRE_OPTIONS} icons={CALL_CENTRE_ICONS}
+                      selected={form.telephoneDetails.callCentreAccess} multi
+                      onToggle={(v) => toggleMulti('callCentreAccess', v)}
+                      open={openGroup === 'callCentreAccess'} onToggleOpen={() => toggleOpenGroup('callCentreAccess')}
+                    />
+                  )}
+                  {ucChoiceMissing && (
+                    <p className="wizard-subtext" style={{ marginTop: 8 }}>Choose at least one kind of access to continue.</p>
+                  )}
                 </fieldset>
               )}
             </div>
@@ -417,11 +494,14 @@ export default function RequestWizard() {
 
           <div className="review-summary">
             <h3>
-              <span aria-hidden="true">{form.assetTypeKey === 'other' ? '✨' : CATALOG_ICONS[form.assetTypeKey]}</span>{' '}
+              <span aria-hidden="true">{CATALOG_ICONS[form.assetTypeKey] || '✨'}</span>{' '}
               {chosenMeta ? chosenMeta.label : form.assetType} × {form.quantity}
             </h3>
             <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>{form.description}</p>
             <p style={{ fontSize: '0.88rem' }}>Priority: <strong>{form.priority}</strong> · Needed by: <strong>{form.dateRequired}</strong></p>
+            {telephoneSummary.length > 0 && (
+              <p style={{ fontSize: '0.88rem', marginTop: 4 }}>{telephoneSummary.join(' · ')}</p>
+            )}
           </div>
 
           <div className="review-summary">
