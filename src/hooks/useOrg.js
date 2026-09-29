@@ -48,11 +48,54 @@ export function usePackages() {
   const { docs, loading, error } = useCollection('packages')
   const packages = Object.fromEntries(docs.map((p) => [p.id, p]))
 
-  const savePackage = useCallback(async (jobRole, { name, permissions }) => {
-    await setDoc(doc(db, 'packages', jobRole), { name, permissions, updatedAt: serverTimestamp() })
+  const savePackage = useCallback(async (jobRole, { name, permissions, requestOptions, postpaidPlan }) => {
+    await setDoc(doc(db, 'packages', jobRole), {
+      name,
+      permissions,
+      requestOptions: requestOptions || [],
+      postpaidPlan: postpaidPlan || null,
+      updatedAt: serverTimestamp(),
+    })
   }, [])
 
   return { packages, loading, error, savePackage }
+}
+
+/**
+ * CUG Postpaid plan -> BSP option mapping (config/cugPlans). `plans` is
+ * null until an admin creates it; an unmapped plan's value is null.
+ */
+export function useCugPlans() {
+  const [plans, setPlans] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) {
+      setLoading(false)
+      return
+    }
+    const unsubscribe = onSnapshot(
+      doc(db, 'config', 'cugPlans'),
+      (snap) => {
+        setPlans(snap.exists() ? snap.data().plans || {} : null)
+        setLoading(false)
+        setError(null)
+      },
+      (err) => {
+        console.error('[useCugPlans] snapshot error:', err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
+    return () => unsubscribe()
+  }, [])
+
+  const savePlans = useCallback(async (next) => {
+    await setDoc(doc(db, 'config', 'cugPlans'), { plans: next, updatedAt: serverTimestamp() })
+  }, [])
+
+  return { plans, loading, error, savePlans }
 }
 
 /** Minimal public card per person with a job role — used to find approvers. */

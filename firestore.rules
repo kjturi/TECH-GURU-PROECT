@@ -80,6 +80,47 @@ service cloud.firestore {
       return packageGrants(uid, 'approve_requests') || adminCanApprove(uid);
     }
 
+    // --- Request packages (mirrors src/data/requestPackages.js) ---------
+    // The requester's role package. Only call after packageGrants() has
+    // confirmed they have a job role and the package exists.
+    function myRolePackage() {
+      return get(/databases/$(database)/documents/packages/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.jobRole)).data;
+    }
+
+    // A CUG / Dongle request must be one the requester's role package
+    // allows; CUG Postpaid must carry the role's plan and the BSP option
+    // that plan maps to in config/cugPlans; Dongle must answer "Router
+    // required?". Any other request carries none of these fields, and
+    // can't name the CUG Mobile / Dongle asset types to get around this.
+    function validRequestPackage() {
+      let d = request.resource.data;
+      let opt = d.get('requestPackage', null);
+      let pkg = myRolePackage();
+      let planCfg = /databases/$(database)/documents/config/cugPlans;
+      return (
+        opt == null &&
+        !(d.assetType in ['CUG Mobile', 'Digicel Dongle Modem']) &&
+        d.get('plan', null) == null &&
+        d.get('bspOption', null) == null &&
+        d.get('routerRequired', null) == null
+      ) || (
+        opt in pkg.get('requestOptions', []) &&
+        (opt in ['cug_prepaid', 'cug_postpaid']
+          ? d.assetType == 'CUG Mobile'
+          : d.assetType == 'Digicel Dongle Modem') &&
+        (opt == 'cug_postpaid'
+          ? (
+              d.get('plan', null) is string &&
+              d.plan == pkg.get('postpaidPlan', null) &&
+              d.get('bspOption', null) == (exists(planCfg) ? get(planCfg).data.plans.get(d.plan, null) : null)
+            )
+          : (d.get('plan', null) == null && d.get('bspOption', null) == null)) &&
+        (opt == 'dongle'
+          ? d.get('routerRequired', null) is bool
+          : d.get('routerRequired', null) == null)
+      );
+    }
+
     // Job assignment fields on a profile. Only a "manage_users" admin may
     // change them, and never on their own profile.
     function jobAssignmentUnchanged() {
@@ -217,11 +258,14 @@ service cloud.firestore {
       allow create, update: if hasPermission('manage_users') &&
         isJobRole(roleKey) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey &&
-        request.resource.data.keys().hasOnly(['name', 'permissions', 'updatedAt']) &&
+        request.resource.data.keys().hasOnly(['name', 'permissions', 'requestOptions', 'postpaidPlan', 'updatedAt']) &&
         request.resource.data.name is string &&
         request.resource.data.name.size() > 0 &&
         request.resource.data.permissions is list &&
-        request.resource.data.permissions.hasOnly(['submit_requests', 'approve_requests']);
+        request.resource.data.permissions.hasOnly(['submit_requests', 'approve_requests']) &&
+        request.resource.data.get('requestOptions', []) is list &&
+        request.resource.data.get('requestOptions', []).hasOnly(['cug_prepaid', 'cug_postpaid', 'dongle']) &&
+        (request.resource.data.get('postpaidPlan', null) == null || request.resource.data.postpaidPlan is string);
       allow delete: if hasPermission('manage_users') &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey;
     }
@@ -239,6 +283,16 @@ service cloud.firestore {
         request.resource.data.buId == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('buId', null) &&
         request.resource.data.teamId == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('teamId', null);
       allow delete: if hasPermission('manage_users') && request.auth.uid != uid;
+    }
+
+    // CUG Postpaid plan -> BSP option mapping (config/cugPlans). Readable by
+    // everyone signed in (the request form shows the BSP option); editable
+    // by "manage_users" admins.
+    match /config/cugPlans {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('manage_users') &&
+        request.resource.data.keys().hasOnly(['plans', 'updatedAt']) &&
+        request.resource.data.plans is map;
     }
 
     // Org structure used for approver routing.
@@ -280,8 +334,10 @@ service cloud.firestore {
         request.resource.data.nextApprovingManagerId != '' &&
         request.resource.data.declarationAccepted == true &&
         request.resource.data.declarationAcceptedAt != null &&
-        // Package: the requester's role must allow requesting.
+        // Package: the requester's role must allow requesting, and any
+        // CUG / Dongle request package must be one their role allows.
         packageGrants(request.auth.uid, 'submit_requests') &&
+        validRequestPackage() &&
         // Approvers are suggested from the team but can be changed — so
         // whoever is named must actually be allowed to approve, be two
         // different people, and not be the requester.

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Topbar from '../../components/Topbar.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useUsers } from '../../hooks/useUsers.js'
-import { usePackages, useDirectory, useOrgUnits, assignJobRole } from '../../hooks/useOrg.js'
+import { usePackages, useDirectory, useOrgUnits, useCugPlans, assignJobRole } from '../../hooks/useOrg.js'
 import {
   JOB_ROLES,
   JOB_ROLE_LABELS,
@@ -11,23 +11,51 @@ import {
   defaultPackage,
   jobRoleRank,
 } from '../../data/jobRoles.js'
+import {
+  REQUEST_OPTIONS,
+  REQUEST_OPTION_KEYS,
+  BSP_OPTIONS,
+  BSP_OPTION_LABELS,
+  DEFAULT_PLANS,
+  defaultRequestEligibility,
+} from '../../data/requestPackages.js'
 import { ROLE_LABELS } from '../../data/adminPermissions.js'
 
 const TABS = [
   { key: 'packages', label: 'Role Packages' },
+  { key: 'plans', label: 'CUG Plans' },
   { key: 'teams', label: 'Business Units & Teams' },
   { key: 'people', label: 'People' },
 ]
 
 // --- Role Packages ----------------------------------------------------------
 
-function PackageCard({ role, pkg, isOwnRole, onSave }) {
-  const [draft, setDraft] = useState(pkg || null)
+function packageFields(pkg) {
+  return {
+    name: pkg.name,
+    permissions: pkg.permissions || [],
+    requestOptions: pkg.requestOptions || [],
+    postpaidPlan: pkg.postpaidPlan || '',
+  }
+}
+
+const sameList = (a, b) => [...a].sort().join() === [...b].sort().join()
+
+function PackageCard({ role, pkg, isOwnRole, planKeys, onSave }) {
+  const [draft, setDraft] = useState(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState(null)
 
-  const current = draft || pkg
-  const changed = draft && (!pkg || draft.name !== pkg.name || [...draft.permissions].sort().join() !== [...pkg.permissions].sort().join())
+  const saved = pkg ? packageFields(pkg) : null
+  const current = draft || saved
+  const changed =
+    draft &&
+    (draft.name !== saved.name ||
+      !sameList(draft.permissions, saved.permissions) ||
+      !sameList(draft.requestOptions, saved.requestOptions) ||
+      draft.postpaidPlan !== saved.postpaidPlan)
+  // Created before request eligibility existed.
+  const missingEligibility = pkg && pkg.requestOptions === undefined
 
   async function save(data) {
     setBusy(true)
@@ -44,11 +72,8 @@ function PackageCard({ role, pkg, isOwnRole, onSave }) {
     }
   }
 
-  const togglePerm = (perm) => {
-    const base = draft || { name: pkg.name, permissions: pkg.permissions || [] }
-    const permissions = base.permissions.includes(perm) ? base.permissions.filter((p) => p !== perm) : [...base.permissions, perm]
-    setDraft({ ...base, permissions })
-  }
+  const edit = (patch) => setDraft({ ...(draft || saved), ...patch })
+  const toggleIn = (list, value) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
 
   return (
     <article className="org-card">
@@ -70,28 +95,76 @@ function PackageCard({ role, pkg, isOwnRole, onSave }) {
         <>
           <label className="org-field">
             <span>Package name</span>
-            <input
-              value={current.name}
-              disabled={isOwnRole}
-              onChange={(e) => setDraft({ ...(draft || { name: pkg.name, permissions: pkg.permissions || [] }), name: e.target.value })}
-            />
+            <input value={current.name} disabled={isOwnRole} onChange={(e) => edit({ name: e.target.value })} />
           </label>
+
+          <p className="org-subhead">Features</p>
           <div className="org-perms">
             {PACKAGE_PERMISSION_KEYS.map((perm) => (
               <label key={perm} className="checkbox-inline">
                 <input
                   type="checkbox"
-                  checked={(current.permissions || []).includes(perm)}
+                  checked={current.permissions.includes(perm)}
                   disabled={isOwnRole}
-                  onChange={() => togglePerm(perm)}
+                  onChange={() => edit({ permissions: toggleIn(current.permissions, perm) })}
                 />
                 {PACKAGE_PERMISSION_LABELS[perm]}
               </label>
             ))}
           </div>
+
+          <p className="org-subhead">Request packages</p>
+          {missingEligibility && !draft ? (
+            <div className="org-perms">
+              <p className="muted" style={{ fontSize: '0.85rem' }}>
+                Not set yet — people with this role can't request CUG or Dongle services.
+              </p>
+              <button
+                className="btn btn-secondary"
+                disabled={busy || isOwnRole}
+                onClick={() => save({ ...saved, ...defaultRequestEligibility(role.key) })}
+              >
+                Apply {role.label} defaults
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="org-perms">
+                {REQUEST_OPTION_KEYS.map((opt) => (
+                  <label key={opt} className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={current.requestOptions.includes(opt)}
+                      disabled={isOwnRole}
+                      onChange={() => edit({ requestOptions: toggleIn(current.requestOptions, opt) })}
+                    />
+                    {REQUEST_OPTIONS[opt].label}
+                  </label>
+                ))}
+              </div>
+              {current.requestOptions.includes('cug_postpaid') && (
+                <label className="org-field">
+                  <span>CUG Postpaid plan</span>
+                  <select
+                    value={current.postpaidPlan}
+                    disabled={isOwnRole}
+                    onChange={(e) => edit({ postpaidPlan: e.target.value })}
+                  >
+                    <option value="">No plan — can't request postpaid</option>
+                    {planKeys.map((p) => <option key={p} value={p}>Plan {p}</option>)}
+                  </select>
+                </label>
+              )}
+            </>
+          )}
+
           {changed && (
             <div className="org-actions">
-              <button className="btn btn-primary" disabled={busy || !current.name.trim()} onClick={() => save({ name: current.name.trim(), permissions: current.permissions })}>
+              <button
+                className="btn btn-primary"
+                disabled={busy || !current.name.trim()}
+                onClick={() => save({ ...current, name: current.name.trim() })}
+              >
                 {busy ? 'Saving…' : 'Save changes'}
               </button>
               <button className="btn btn-secondary" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
@@ -107,17 +180,37 @@ function PackageCard({ role, pkg, isOwnRole, onSave }) {
 
 function PackagesTab({ myJobRole }) {
   const { packages, loading, error, savePackage } = usePackages()
+  const { plans } = useCugPlans()
   const [busy, setBusy] = useState(false)
-  const missing = JOB_ROLES.filter((r) => !packages[r.key] && r.key !== myJobRole)
+  const [bulkError, setBulkError] = useState(null)
+  const editable = JOB_ROLES.filter((r) => r.key !== myJobRole)
+  const missing = editable.filter((r) => !packages[r.key])
+  const needsEligibility = editable.filter((r) => packages[r.key] && packages[r.key].requestOptions === undefined)
+  const planKeys = plans ? Object.keys(plans).sort() : DEFAULT_PLANS
 
-  async function createMissing() {
+  async function runBulk(fn) {
     setBusy(true)
+    setBulkError(null)
     try {
-      await Promise.all(missing.map((r) => savePackage(r.key, defaultPackage(r.key))))
+      await fn()
+    } catch (err) {
+      console.error('[Organization] bulk package update failed:', err)
+      setBulkError('Some packages could not be saved — you may not have permission.')
     } finally {
       setBusy(false)
     }
   }
+
+  const createMissing = () =>
+    runBulk(() => Promise.all(missing.map((r) => savePackage(r.key, defaultPackage(r.key)))))
+  const applyEligibility = () =>
+    runBulk(() =>
+      Promise.all(
+        needsEligibility.map((r) =>
+          savePackage(r.key, { ...packageFields(packages[r.key]), ...defaultRequestEligibility(r.key) })
+        )
+      )
+    )
 
   if (loading) return <p className="state-msg">Loading packages…</p>
   if (error) return <p className="state-msg error">Could not load packages: {error}</p>
@@ -125,27 +218,167 @@ function PackagesTab({ myJobRole }) {
   return (
     <>
       <p className="org-intro">
-        Each job role gets one package. A package decides which features people with that role can use —
-        Firestore rules enforce it, so unticking a box takes effect immediately for everyone with that role.
+        Each job role gets one package. It decides which features people with that role can use and which
+        request packages (CUG Prepaid, CUG Postpaid and its plan, Dongle) they can ask for. Firestore rules
+        enforce it, so a change takes effect immediately for everyone with that role.
       </p>
-      {missing.length > 0 && (
-        <p style={{ marginBottom: 16 }}>
-          <button className="btn btn-primary" onClick={createMissing} disabled={busy}>
-            {busy ? 'Creating…' : `Create ${missing.length} missing package${missing.length === 1 ? '' : 's'} with defaults`}
-          </button>
-        </p>
+      {(missing.length > 0 || needsEligibility.length > 0) && (
+        <div className="org-actions" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+          {missing.length > 0 && (
+            <button className="btn btn-primary" onClick={createMissing} disabled={busy}>
+              {busy ? 'Working…' : `Create ${missing.length} missing package${missing.length === 1 ? '' : 's'} with defaults`}
+            </button>
+          )}
+          {needsEligibility.length > 0 && (
+            <button className="btn btn-primary" onClick={applyEligibility} disabled={busy}>
+              {busy ? 'Working…' : `Add request packages to ${needsEligibility.length} existing package${needsEligibility.length === 1 ? '' : 's'}`}
+            </button>
+          )}
+        </div>
       )}
+      {bulkError && <p className="state-msg error">{bulkError}</p>}
       <div className="org-grid">
         {JOB_ROLES.map((role) => (
           <PackageCard
-            key={`${role.key}-${packages[role.key]?.name}-${(packages[role.key]?.permissions || []).join()}`}
+            key={`${role.key}-${JSON.stringify(packages[role.key] ? packageFields(packages[role.key]) : null)}-${packages[role.key]?.requestOptions === undefined}`}
             role={role}
             pkg={packages[role.key] || null}
             isOwnRole={role.key === myJobRole}
+            planKeys={planKeys}
             onSave={savePackage}
           />
         ))}
       </div>
+    </>
+  )
+}
+
+// --- CUG Plans ---------------------------------------------------------------
+
+function PlansTab() {
+  const { plans, loading, error, savePlans } = useCugPlans()
+  const { packages } = usePackages()
+  const [draft, setDraft] = useState(null)
+  const [newPlan, setNewPlan] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState(null)
+
+  async function save(next) {
+    setBusy(true)
+    setMessage(null)
+    try {
+      await savePlans(next)
+      setDraft(null)
+      setMessage('Saved.')
+    } catch (err) {
+      console.error('[Organization] plan save failed:', err)
+      setMessage('Could not save — you may not have permission.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) return <p className="state-msg">Loading plans…</p>
+  if (error) return <p className="state-msg error">Could not load plans: {error}</p>
+
+  if (!plans) {
+    return (
+      <>
+        <p className="org-intro">
+          CUG Postpaid plans ({DEFAULT_PLANS.join(', ')}) haven't been created yet. Creating them leaves every plan's
+          BSP option unassigned — pick them here afterwards.
+        </p>
+        <button
+          className="btn btn-primary"
+          disabled={busy}
+          onClick={() => save(Object.fromEntries(DEFAULT_PLANS.map((p) => [p, null])))}
+        >
+          Create plans {DEFAULT_PLANS.join(', ')}
+        </button>
+        {message && <p className="org-note">{message}</p>}
+      </>
+    )
+  }
+
+  const current = draft || plans
+  const planKeys = Object.keys(current).sort()
+  const rolesOnPlan = (plan) =>
+    JOB_ROLES.filter((r) => packages[r.key]?.postpaidPlan === plan).map((r) => r.label)
+  const changed = draft && JSON.stringify(draft) !== JSON.stringify(plans)
+
+  return (
+    <>
+      <p className="org-intro">
+        Choose which BSP option each CUG Postpaid plan gives. A requester's plan comes from their role package;
+        the BSP option shown on their request is taken from here when they submit.
+      </p>
+      <div className="table-wrap">
+        <table className="org-people">
+          <thead>
+            <tr><th>Plan</th><th>BSP option</th><th>Roles on this plan</th><th></th></tr>
+          </thead>
+          <tbody>
+            {planKeys.map((plan) => {
+              const roles = rolesOnPlan(plan)
+              return (
+                <tr key={plan}>
+                  <td><strong>Plan {plan}</strong></td>
+                  <td>
+                    <select
+                      value={current[plan] || ''}
+                      onChange={(e) => setDraft({ ...current, [plan]: e.target.value || null })}
+                    >
+                      <option value="">Not assigned yet</option>
+                      {BSP_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    </select>
+                  </td>
+                  <td>{roles.length ? roles.join(', ') : <span className="muted">None</span>}</td>
+                  <td className="actions-cell">
+                    <button
+                      className="btn btn-danger"
+                      disabled={roles.length > 0}
+                      title={roles.length ? 'Move these roles to another plan first' : 'Remove plan'}
+                      onClick={() => {
+                        const next = { ...current }
+                        delete next[plan]
+                        setDraft(next)
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <form
+        className="org-inline-add"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const key = newPlan.trim()
+          if (!key || key in current) return
+          setDraft({ ...current, [key]: null })
+          setNewPlan('')
+        }}
+      >
+        <input value={newPlan} onChange={(e) => setNewPlan(e.target.value)} placeholder="New plan, e.g. 2.7" />
+        <button className="btn btn-secondary" type="submit" disabled={!newPlan.trim()}>Add plan</button>
+      </form>
+
+      {changed && (
+        <div className="org-actions" style={{ marginTop: 12 }}>
+          <button className="btn btn-primary" disabled={busy} onClick={() => save(draft)}>{busy ? 'Saving…' : 'Save plans'}</button>
+          <button className="btn btn-secondary" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+        </div>
+      )}
+      {message && <p className="org-note">{message}</p>}
+      <p className="org-note">
+        Unassigned plans: {planKeys.filter((p) => !plans[p]).map((p) => `Plan ${p}`).join(', ') || 'none'}.
+        {' '}BSP options: {BSP_OPTIONS.map((o) => BSP_OPTION_LABELS[o.key]).join(', ')}.
+      </p>
     </>
   )
 }
@@ -437,6 +670,7 @@ export default function Organization() {
         ))}
       </div>
       {tab === 'packages' && <PackagesTab myJobRole={profile?.jobRole} />}
+      {tab === 'plans' && <PlansTab />}
       {tab === 'teams' && <TeamsTab />}
       {tab === 'people' && <PeopleTab myUid={user.uid} />}
     </>

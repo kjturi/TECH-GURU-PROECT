@@ -5,7 +5,13 @@ import StatusBadge from '../../components/StatusBadge.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
 import { useAdmins } from '../../hooks/useAdmins.js'
-import { usePackages, useDirectory, useOrgUnits } from '../../hooks/useOrg.js'
+import { usePackages, useDirectory, useOrgUnits, useCugPlans } from '../../hooks/useOrg.js'
+import {
+  REQUEST_OPTIONS,
+  CARD_REQUEST_OPTIONS,
+  BSP_OPTION_LABELS,
+  describeRequestPackage,
+} from '../../data/requestPackages.js'
 import {
   JOB_ROLE_LABELS,
   PACKAGE_PERMISSIONS,
@@ -126,6 +132,8 @@ function emptyForm(profile) {
     nextApprovingManagerId: '',
     declarationAccepted: false,
     telephoneDetails: emptyTelephoneDetails(),
+    requestPackage: '',
+    routerRequired: null,
   }
 }
 
@@ -215,6 +223,18 @@ export default function RequestWizard() {
   const myBu = businessUnits.find((b) => b.id === me?.buId)
   const submitAccess = packageAccess(profile, packages, PACKAGE_PERMISSIONS.SUBMIT_REQUESTS)
 
+  // Request packages (CUG Prepaid / Postpaid, Dongle) this person's role is
+  // eligible for. Postpaid also needs a plan on their role package.
+  const { plans: cugPlans } = useCugPlans()
+  const myPackage = packages[profile?.jobRole]
+  const myPlan = myPackage?.postpaidPlan || null
+  const myBsp = myPlan && cugPlans ? cugPlans[myPlan] || null : null
+  const optionAvailable = (opt) =>
+    (myPackage?.requestOptions || []).includes(opt) && (opt !== 'cug_postpaid' || !!myPlan)
+  const cardOptions = (key) => (CARD_REQUEST_OPTIONS[key] || []).filter(optionAvailable)
+  const isCardAvailable = (key) => !CARD_REQUEST_OPTIONS[key] || cardOptions(key).length > 0
+  const hiddenCards = DEVICE_TYPE_KEYS.filter((key) => !isCardAvailable(key))
+
   const [step, setStep] = useState(1) // 1 details, 2 choose, 3 review, 4 done
   const [form, setForm] = useState(() => emptyForm(profile))
   const [openGroup, setOpenGroup] = useState(null)
@@ -256,9 +276,12 @@ export default function RequestWizard() {
   }
 
   function selectAssetType(key) {
+    const options = cardOptions(key)
     set('assetTypeKey', key)
     set('assetType', key === 'other' ? '' : key === UC_CARD.key ? UC_CARD.label : DEVICE_TYPES[key].label)
     set('telephoneDetails', emptyTelephoneDetails())
+    set('requestPackage', options.length === 1 ? options[0] : '')
+    set('routerRequired', null)
     setOpenGroup(null)
   }
   function toggleSoftphone() {
@@ -288,9 +311,20 @@ export default function RequestWizard() {
   const telephoneSummary = describeTelephoneDetails(telephoneDetails)
   // An access-only request has to ask for at least one kind of access.
   const ucChoiceMissing = form.assetTypeKey === UC_CARD.key && telephoneSummary.length === 0
+  const packageChoices = cardOptions(form.assetTypeKey)
+  const isPackageCard = !!CARD_REQUEST_OPTIONS[form.assetTypeKey]
+  const requestPackageFields = {
+    requestPackage: isPackageCard ? form.requestPackage || null : null,
+    plan: isPackageCard && form.requestPackage === 'cug_postpaid' ? myPlan : null,
+    bspOption: isPackageCard && form.requestPackage === 'cug_postpaid' ? myBsp : null,
+    routerRequired: isPackageCard && form.requestPackage === 'dongle' ? form.routerRequired : null,
+  }
+  const requestPackageSummary = describeRequestPackage(requestPackageFields)
   const canProceedFromChoose =
     form.assetTypeKey &&
     !ucChoiceMissing &&
+    (!isPackageCard || !!form.requestPackage) &&
+    (form.requestPackage !== 'dongle' || typeof form.routerRequired === 'boolean') &&
     (form.assetTypeKey !== 'other' || form.assetType.trim()) &&
     Number(form.quantity) >= 1 &&
     form.dateRequired &&
@@ -323,6 +357,7 @@ export default function RequestWizard() {
       const ref = await submitRequest(user, {
         ...form,
         telephoneDetails,
+        ...requestPackageFields,
         requesterName: fullName,
         immediateManagerName: immediateManager?.name || '',
         nextApprovingManagerName: nextApprovingManager?.name || '',
@@ -418,7 +453,7 @@ export default function RequestWizard() {
           <p className="wizard-subtext">Pick what you need, then tell us how many and by when.</p>
 
           <div className="asset-catalog-grid">
-            {DEVICE_TYPE_KEYS.map((key) => (
+            {DEVICE_TYPE_KEYS.filter(isCardAvailable).map((key) => (
               <button
                 type="button"
                 key={key}
@@ -449,6 +484,12 @@ export default function RequestWizard() {
               <span className="asset-catalog-desc">Laptop, monitor, or anything not listed above.</span>
             </button>
           </div>
+          {hiddenCards.length > 0 && (
+            <p className="wizard-subtext" style={{ marginTop: 8 }}>
+              {hiddenCards.map((k) => DEVICE_TYPES[k].plural).join(' and ')} {hiddenCards.length === 1 ? "isn't" : "aren't"} included
+              in your {myPackage?.name || 'role package'}.
+            </p>
+          )}
 
           {form.assetTypeKey && (
             <div className="wizard-config">
@@ -486,6 +527,58 @@ export default function RequestWizard() {
                   required
                 />
               </div>
+
+              {isPackageCard && (
+                <fieldset className="form-fieldset">
+                  <legend>Request package</legend>
+                  {packageChoices.length > 1 ? (
+                    <div className="option-picker-grid" style={{ paddingLeft: 0 }}>
+                      {packageChoices.map((opt) => (
+                        <button
+                          type="button"
+                          key={opt}
+                          className={`option-btn${form.requestPackage === opt ? ' selected' : ''}`}
+                          aria-pressed={form.requestPackage === opt}
+                          onClick={() => set('requestPackage', opt)}
+                        >
+                          <span>{REQUEST_OPTIONS[opt].label}</span>
+                          {form.requestPackage === opt && <span className="option-btn-check" aria-hidden="true">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="package-line"><strong>{REQUEST_OPTIONS[form.requestPackage]?.label}</strong></p>
+                  )}
+
+                  {form.requestPackage === 'cug_postpaid' && (
+                    <p className="package-line">
+                      Your plan: <strong>Plan {myPlan}</strong>
+                      {' · '}BSP option:{' '}
+                      {myBsp ? <strong>{BSP_OPTION_LABELS[myBsp] || myBsp}</strong> : <span className="muted">not assigned yet — IT will confirm</span>}
+                    </p>
+                  )}
+
+                  {form.requestPackage === 'dongle' && (
+                    <div style={{ marginTop: 8 }}>
+                      <span className="field-group-label">Router required?</span>
+                      <div className="option-picker-grid" style={{ paddingLeft: 0 }}>
+                        {[true, false].map((value) => (
+                          <button
+                            type="button"
+                            key={String(value)}
+                            className={`option-btn${form.routerRequired === value ? ' selected' : ''}`}
+                            aria-pressed={form.routerRequired === value}
+                            onClick={() => set('routerRequired', value)}
+                          >
+                            <span>{value ? 'Yes' : 'No'}</span>
+                            {form.routerRequired === value && <span className="option-btn-check" aria-hidden="true">✓</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </fieldset>
+              )}
 
               {cardConfig && (
                 <fieldset className="form-fieldset">
@@ -559,6 +652,9 @@ export default function RequestWizard() {
             </h3>
             <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>{form.description}</p>
             <p style={{ fontSize: '0.88rem' }}>Priority: <strong>{form.priority}</strong> · Needed by: <strong>{form.dateRequired}</strong></p>
+            {requestPackageSummary && (
+              <p style={{ fontSize: '0.88rem', marginTop: 4 }}>Package: <strong>{requestPackageSummary}</strong></p>
+            )}
             {telephoneSummary.length > 0 && (
               <p style={{ fontSize: '0.88rem', marginTop: 4 }}>{telephoneSummary.join(' · ')}</p>
             )}

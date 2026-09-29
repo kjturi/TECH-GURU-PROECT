@@ -13,6 +13,8 @@
 // firestore.rules enforces the same package checks server-side — keep the
 // key lists below in sync with it.
 
+import { defaultRequestEligibility } from './requestPackages.js'
+
 // Ordered lowest -> highest; the order is the approval ladder.
 export const JOB_ROLES = [
   { key: 'officer', label: 'Officer' },
@@ -44,6 +46,8 @@ export const PACKAGE_PERMISSION_LABELS = {
 }
 
 // Starting point when an admin creates the packages — editable afterwards.
+// Request eligibility (CUG / Dongle options and postpaid plan) comes from
+// requestPackages.js.
 export function defaultPackage(jobRoleKey) {
   const canApprove = jobRoleRank(jobRoleKey) >= jobRoleRank('team_leader')
   return {
@@ -51,6 +55,7 @@ export function defaultPackage(jobRoleKey) {
     permissions: canApprove
       ? [PACKAGE_PERMISSIONS.SUBMIT_REQUESTS, PACKAGE_PERMISSIONS.APPROVE_REQUESTS]
       : [PACKAGE_PERMISSIONS.SUBMIT_REQUESTS],
+    ...defaultRequestEligibility(jobRoleKey),
   }
 }
 

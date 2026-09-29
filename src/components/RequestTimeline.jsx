@@ -1,5 +1,6 @@
 import { STATUS, STATUS_SEQUENCE } from '../data/requestStatuses.js'
 import StatusBadge from './StatusBadge.jsx'
+import { describeRequestPackage } from '../data/requestPackages.js'
 
 export default function RequestTimeline({ request, onSignOff, signingOff }) {
   const currentIndex = STATUS_SEQUENCE.indexOf(request.status)
@@ -15,6 +16,12 @@ export default function RequestTimeline({ request, onSignOff, signingOff }) {
         <p style={{ marginBottom: 8, fontSize: '0.9rem' }}>
           {request.immediateManagerName && <>Level 1 approver: <strong>{request.immediateManagerName}</strong>. </>}
           {request.nextApprovingManagerName && <>Level 2 approver: <strong>{request.nextApprovingManagerName}</strong>.</>}
+        </p>
+      )}
+
+      {describeRequestPackage(request) && (
+        <p style={{ marginBottom: 8, fontSize: '0.9rem' }}>
+          Package: <strong>{describeRequestPackage(request)}</strong>
         </p>
       )}
 

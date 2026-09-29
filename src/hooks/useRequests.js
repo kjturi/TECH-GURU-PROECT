@@ -98,6 +98,12 @@ export function useRequests(viewer) {
       declarationAccepted: !!form.declarationAccepted,
       declarationAcceptedAt: form.declarationAccepted ? serverTimestamp() : null,
       telephoneDetails: form.telephoneDetails,
+      // Request package (CUG / Dongle) — checked against the requester's
+      // role package and config/cugPlans in firestore.rules.
+      requestPackage: form.requestPackage || null,
+      plan: form.plan || null,
+      bspOption: form.bspOption || null,
+      routerRequired: typeof form.routerRequired === 'boolean' ? form.routerRequired : null,
       status: STATUS.PENDING_L1,
       rid: null,
       assignedTechnicianId: null,

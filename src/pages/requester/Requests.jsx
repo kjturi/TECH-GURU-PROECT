@@ -4,11 +4,13 @@ import StatusBadge from '../../components/StatusBadge.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
 import { STATUS, isActiveRequest, nextStepFor, formatDate } from '../../data/requestStatuses.js'
+import { describeRequestPackage } from '../../data/requestPackages.js'
 
 function RequestCard({ request, onSignOff, signingOff }) {
   const next = nextStepFor(request)
   const submitted = formatDate(request.createdAt)
   const reference = request.rid || `REQ-${request.id.slice(-6).toUpperCase()}`
+  const packageSummary = describeRequestPackage(request)
 
   return (
     <article className={`request-card${next.actionNeeded ? ' action-needed' : ''}`}>
@@ -21,6 +23,7 @@ function RequestCard({ request, onSignOff, signingOff }) {
             {' · '}Qty {request.quantity || 1}
             {request.priority && <> · {request.priority} priority</>}
           </p>
+          {packageSummary && <p className="request-card-package">{packageSummary}</p>}
         </div>
         <StatusBadge status={request.status} />
       </div>
