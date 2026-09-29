@@ -37,42 +37,49 @@ import {
 // treatment as the Telephone/UC option pickers below.
 const CATALOG_ICONS = { cug: '📱', headset: '🎧', deskphone: '📞', vodafone: '📶', digicel: '🔌', uc: '☎️' }
 
-// "Telephone" card: a Softphone (Jabber) line, optionally with a headset.
-// Physical desk phones are requested from the Desk Phones card instead.
-// Not an inventory device type, so it isn't in DEVICE_TYPES. (Key stays
-// 'uc' so existing code paths are unchanged.)
+// "Telephone" card: covers both a Softphone (Jabber) line and a physical
+// desk phone (there's no separate Desk Phones card). Not one inventory
+// device type, so it isn't in DEVICE_TYPES. (Key stays 'uc' so existing
+// code paths are unchanged.)
 const UC_CARD = {
   key: 'uc',
   label: 'Telephone',
-  description: 'Softphone (Jabber) line, with an optional headset. For a physical handset, choose Desk Phones.',
+  description: 'Softphone (Jabber) or desk phone.',
 }
 
-// How handsetType values read on the Review step.
-const HANDSET_LABELS = { Softphone: 'Softphone (Jabber)' }
+// Phone types on the Telephone card. `value` is saved as
+// telephoneDetails.handsetType; `assetType` is saved on the request — a
+// desk phone keeps the "Desk Phone" device label so the technician's
+// automatic stock check still matches it against desk phone inventory.
+const PHONE_TYPES = [
+  { value: 'Softphone', label: 'Softphone (Jabber)', assetType: 'Softphone (Jabber)' },
+  { value: 'Deskphone', label: 'Desk phone', assetType: DEVICE_TYPES.deskphone.label },
+]
+const HANDSET_LABELS = Object.fromEntries(PHONE_TYPES.map((t) => [t.value, t.label]))
 
-// What "Configure this request" asks for each card, and what the card
-// already answers on its own. Picking "CUG Mobiles" already says the
-// request type is mobile, and "Desk Phones" already says telephone +
-// deskphone handset, so those are filled in (`implied`) instead of asked
-// again. Cards not listed here (CUG Mobiles, Headsets, modems, Something
-// else) have no configure step and save no telephoneDetails at all — a CUG
-// request is configured by its request package (Prepaid / Postpaid BSP
-// package) instead.
-const CARD_CONFIG = {
-  deskphone: {
-    implied: { requestTypes: ['Telephone'], handsetType: 'Deskphone' },
-    ask: ['headsetRequired', 'extensionAccess'],
-  },
-  uc: {
+// What "Configure this request" asks for each phone type, and what the
+// choice already answers on its own (`implied`). Other cards (CUG Mobiles,
+// Headsets, modems, Something else) have no configure step and save no
+// telephoneDetails at all — a CUG request is configured by its request
+// package (Prepaid / Postpaid BSP package) instead.
+const PHONE_CONFIG = {
+  Softphone: {
     implied: { requestTypes: ['Telephone'], handsetType: 'Softphone' },
     ask: ['headsetRequired'],
   },
+  Deskphone: {
+    implied: { requestTypes: ['Telephone'], handsetType: 'Deskphone' },
+    ask: ['extensionAccess'],
+  },
+}
+
+function configFor(assetTypeKey, handsetType) {
+  return assetTypeKey === UC_CARD.key ? PHONE_CONFIG[handsetType] || null : null
 }
 
 // Only the fields this card actually asked, plus what the card implies —
 // so switching cards mid-form can never leave stale answers behind.
-function buildTelephoneDetails(assetTypeKey, details) {
-  const config = CARD_CONFIG[assetTypeKey]
+function buildTelephoneDetails(config, details) {
   if (!config) return null
   const asked = new Set(config.ask)
   return {
@@ -310,8 +317,16 @@ export default function RequestWizard() {
   ].filter(Boolean)
 
   // --- Step 2: Choose an Asset -----------------------------------------
-  const cardConfig = CARD_CONFIG[form.assetTypeKey]
-  const telephoneDetails = buildTelephoneDetails(form.assetTypeKey, form.telephoneDetails)
+  const cardConfig = configFor(form.assetTypeKey, form.telephoneDetails.handsetType)
+  const telephoneDetails = buildTelephoneDetails(cardConfig, form.telephoneDetails)
+  function pickPhoneType(type) {
+    setForm((f) => ({
+      ...f,
+      assetType: type.assetType,
+      telephoneDetails: { ...emptyTelephoneDetails(), handsetType: type.value },
+    }))
+    setOpenGroup(null)
+  }
   const telephoneSummary = describeTelephoneDetails(telephoneDetails)
   const packageChoices = cardChoices(form.assetTypeKey)
   const isChosen = (c) => form.requestPackage === c.requestPackage && form.bspOption === c.bspOption
@@ -329,6 +344,7 @@ export default function RequestWizard() {
   const requestPackageSummary = describeRequestPackage(requestPackageFields)
   const canProceedFromChoose =
     form.assetTypeKey &&
+    (form.assetTypeKey !== UC_CARD.key || !!form.telephoneDetails.handsetType) &&
     (!isPackageCard || !!form.requestPackage) &&
     (form.requestPackage !== 'cug_postpaid' || !!form.bspOption) &&
     (form.requestPackage !== 'dongle' || typeof form.routerRequired === 'boolean') &&
@@ -460,7 +476,7 @@ export default function RequestWizard() {
           <p className="wizard-subtext">Pick what you need, then tell us how many and by when.</p>
 
           <div className="asset-catalog-grid">
-            {DEVICE_TYPE_KEYS.filter(isCardAvailable).map((key) => (
+            {DEVICE_TYPE_KEYS.filter((key) => key !== 'deskphone' && isCardAvailable(key)).map((key) => (
               <button
                 type="button"
                 key={key}
@@ -613,14 +629,33 @@ export default function RequestWizard() {
                 </fieldset>
               )}
 
+              {form.assetTypeKey === UC_CARD.key && (
+                <fieldset className="form-fieldset">
+                  <legend>Phone type</legend>
+                  <div className="option-picker-grid" style={{ paddingLeft: 0 }}>
+                    {PHONE_TYPES.map((t) => {
+                      const chosen = form.telephoneDetails.handsetType === t.value
+                      return (
+                        <button
+                          type="button"
+                          key={t.value}
+                          className={`option-btn${chosen ? ' selected' : ''}`}
+                          aria-pressed={chosen}
+                          onClick={() => pickPhoneType(t)}
+                        >
+                          <span className="option-btn-icon" aria-hidden="true">{HANDSET_TYPE_ICONS[t.value]}</span>
+                          <span>{t.label}</span>
+                          {chosen && <span className="option-btn-check" aria-hidden="true">✓</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+              )}
+
               {cardConfig && (
                 <fieldset className="form-fieldset">
                   <legend>Configure this request</legend>
-                  {form.assetTypeKey === UC_CARD.key && (
-                    <p className="package-line" style={{ marginBottom: 6 }}>
-                      <span aria-hidden="true">{HANDSET_TYPE_ICONS.Softphone}</span> Includes a <strong>Softphone (Jabber)</strong> line.
-                    </p>
-                  )}
                   {cardConfig.ask.includes('headsetRequired') && (
                     <OptionPicker
                       label="Add a Headset?" options={HEADSET_OPTIONS} icons={HEADSET_ICONS}
