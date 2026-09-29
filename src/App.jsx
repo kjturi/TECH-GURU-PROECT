@@ -31,11 +31,13 @@ import ClosedRids from './pages/admin/ClosedRids.jsx'
 import UserManagement from './pages/admin/UserManagement.jsx'
 import AdminReports from './pages/admin/Reports.jsx'
 import SystemSettings from './pages/admin/SystemSettings.jsx'
+import Organization from './pages/admin/Organization.jsx'
 
 import RequestWizard from './pages/requester/RequestWizard.jsx'
 import Welcome from './pages/requester/Welcome.jsx'
 import Requests from './pages/requester/Requests.jsx'
 import MyAssets from './pages/requester/MyAssets.jsx'
+import Approvals from './pages/requester/Approvals.jsx'
 import RequestDetail from './pages/requester/RequestDetail.jsx'
 import Profile from './pages/Profile.jsx'
 
@@ -129,6 +131,10 @@ export default function App() {
           path="users"
           element={<RequirePermission anyPermission={[ADMIN_PERMISSIONS.MANAGE_USERS, ADMIN_PERMISSIONS.PROVISION_TECHNICIANS]}><UserManagement /></RequirePermission>}
         />
+        <Route
+          path="organization"
+          element={<RequirePermission permission={ADMIN_PERMISSIONS.MANAGE_USERS}><Organization /></RequirePermission>}
+        />
         <Route path="reports" element={<RequirePermission adminOnly><AdminReports /></RequirePermission>} />
         <Route path="settings" element={<RequirePermission adminOnly><SystemSettings /></RequirePermission>} />
         <Route path="profile" element={<Profile />} />
@@ -148,6 +154,7 @@ export default function App() {
         <Route path="requests/new" element={<RequestWizard />} />
         <Route path="requests/:id" element={<RequestDetail />} />
         <Route path="my-assets" element={<MyAssets />} />
+        <Route path="approvals" element={<Approvals />} />
         <Route path="profile" element={<Profile />} />
         {/* Old requester URLs, kept working for bookmarks */}
         <Route path="assets" element={<Navigate to="/requester/requests/new" replace />} />

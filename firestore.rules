@@ -49,6 +49,51 @@ service cloud.firestore {
       return request.resource.data.get(field, null) == resource.data.get(field, null);
     }
 
+    // --- Job roles & role packages (mirrors src/data/jobRoles.js) -------
+    // A person's job role lives on users/{uid}.jobRole, and the package for
+    // that role at packages/{jobRole}. Keep these key lists in sync with
+    // JOB_ROLES and PACKAGE_PERMISSIONS in jobRoles.js.
+    function isJobRole(key) {
+      return key in ['officer', 'senior_officer', 'team_leader', 'manager', 'senior_manager', 'hod', 'group_head'];
+    }
+
+    // True only if `uid` has a job role AND that role's package exists AND
+    // grants `perm`. No role, or no package configured, means no access.
+    function packageGrants(uid, perm) {
+      let profilePath = /databases/$(database)/documents/users/$(uid);
+      let role = exists(profilePath) ? get(profilePath).data.get('jobRole', null) : null;
+      return role is string &&
+        exists(/databases/$(database)/documents/packages/$(role)) &&
+        perm in get(/databases/$(database)/documents/packages/$(role)).data.get('permissions', []);
+    }
+
+    // The pre-packages approver: an Admin account with approve_requests (or
+    // a grandfathered admin with no permissions field at all).
+    function adminCanApprove(uid) {
+      let profilePath = /databases/$(database)/documents/users/$(uid);
+      return exists(profilePath) &&
+        get(profilePath).data.role == 'admin' &&
+        (!('permissions' in get(profilePath).data) || 'approve_requests' in get(profilePath).data.permissions);
+    }
+
+    function canBeApprover(uid) {
+      return packageGrants(uid, 'approve_requests') || adminCanApprove(uid);
+    }
+
+    // Job assignment fields on a profile. Only a "manage_users" admin may
+    // change them, and never on their own profile.
+    function jobAssignmentUnchanged() {
+      return fieldUnchanged('jobRole') && fieldUnchanged('packageId') &&
+        fieldUnchanged('buId') && fieldUnchanged('teamId');
+    }
+
+    // The package always follows the role: packageId must equal jobRole.
+    function validJobAssignment() {
+      let role = request.resource.data.get('jobRole', null);
+      return request.resource.data.get('packageId', null) == role &&
+        (role == null || isJobRole(role));
+    }
+
     // User profiles: users/{uid}
     match /users/{userId} {
       // Anyone signed in can see a doc if it's their own, if they're an
@@ -73,7 +118,11 @@ service cloud.firestore {
       // role: "admin" (or "technician_admin"/"inventory_admin") on create.
       allow create: if isSignedIn() &&
         request.auth.uid == userId &&
-        request.resource.data.role == 'requester';
+        request.resource.data.role == 'requester' &&
+        !('jobRole' in request.resource.data) &&
+        !('packageId' in request.resource.data) &&
+        !('buId' in request.resource.data) &&
+        !('teamId' in request.resource.data);
 
       // A user can update their own profile, but not their own role or
       // permissions — changing either requires "manage_users" (full user
@@ -84,9 +133,17 @@ service cloud.firestore {
         (
           request.auth.uid == userId &&
           request.resource.data.role == resource.data.role &&
-          request.resource.data.get('permissions', null) == resource.data.get('permissions', null)
+          request.resource.data.get('permissions', null) == resource.data.get('permissions', null) &&
+          jobAssignmentUnchanged()
         ) ||
-        hasPermission('manage_users') ||
+        // Full user management — including job role/package/team, which
+        // must stay consistent (validJobAssignment) and can never be
+        // changed on the admin's own profile.
+        (
+          hasPermission('manage_users') &&
+          validJobAssignment() &&
+          (request.auth.uid != userId || jobAssignmentUnchanged())
+        ) ||
         // Inventory Admin's scoped provisioning right: may flip a user
         // between "requester" and "technician_admin" ONLY (an existing
         // admin/inventory_admin account is untouchable this way), and when
@@ -97,6 +154,7 @@ service cloud.firestore {
         (
           hasPermission('provision_technicians') &&
           request.auth.uid != userId &&
+          jobAssignmentUnchanged() &&
           resource.data.role in ['requester', 'technician_admin'] &&
           request.resource.data.role in ['requester', 'technician_admin'] &&
           (
@@ -150,10 +208,57 @@ service cloud.firestore {
       allow write: if isAdmin() || hasPermission('manage_sims');
     }
 
+    // Role packages: one per job role, id == role key. Anyone signed in can
+    // read them (the UI needs to know what their own package allows). Only
+    // "manage_users" admins may edit, and never the package for their own
+    // job role — nobody can widen their own access.
+    match /packages/{roleKey} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission('manage_users') &&
+        isJobRole(roleKey) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey &&
+        request.resource.data.keys().hasOnly(['name', 'permissions', 'updatedAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.permissions is list &&
+        request.resource.data.permissions.hasOnly(['submit_requests', 'approve_requests']);
+      allow delete: if hasPermission('manage_users') &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey;
+    }
+
+    // Minimal public card (name, job role, BU, team) for everyone with a
+    // job role — what the request form reads to find approvers, instead of
+    // exposing full profiles. Written only alongside the matching users doc
+    // (checked with getAfter), so it can't drift from the real assignment.
+    match /directory/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission('manage_users') &&
+        request.auth.uid != uid &&
+        request.resource.data.keys().hasOnly(['name', 'jobRole', 'buId', 'teamId']) &&
+        request.resource.data.jobRole == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('jobRole', null) &&
+        request.resource.data.buId == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('buId', null) &&
+        request.resource.data.teamId == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('teamId', null);
+      allow delete: if hasPermission('manage_users') && request.auth.uid != uid;
+    }
+
+    // Org structure used for approver routing.
+    match /businessUnits/{buId} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('manage_users');
+    }
+    match /teams/{teamId} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission('manage_users') && request.resource.data.buId is string;
+      allow delete: if hasPermission('manage_users');
+    }
+
     // The asset request lifecycle document.
     match /assetRequests/{requestId} {
       allow read: if isSignedIn() && (
-        resource.data.requesterId == request.auth.uid || isAdmin() || hasPermission('manage_requests')
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.immediateManagerId == request.auth.uid ||
+        resource.data.nextApprovingManagerId == request.auth.uid ||
+        isAdmin() || hasPermission('manage_requests')
       );
 
       // A requester may only create a request for themself, and it must
@@ -174,7 +279,17 @@ service cloud.firestore {
         request.resource.data.nextApprovingManagerId is string &&
         request.resource.data.nextApprovingManagerId != '' &&
         request.resource.data.declarationAccepted == true &&
-        request.resource.data.declarationAcceptedAt != null;
+        request.resource.data.declarationAcceptedAt != null &&
+        // Package: the requester's role must allow requesting.
+        packageGrants(request.auth.uid, 'submit_requests') &&
+        // Approvers are suggested from the team but can be changed — so
+        // whoever is named must actually be allowed to approve, be two
+        // different people, and not be the requester.
+        request.resource.data.immediateManagerId != request.resource.data.nextApprovingManagerId &&
+        request.resource.data.immediateManagerId != request.auth.uid &&
+        request.resource.data.nextApprovingManagerId != request.auth.uid &&
+        canBeApprover(request.resource.data.immediateManagerId) &&
+        canBeApprover(request.resource.data.nextApprovingManagerId);
 
       // Ownership and request content can never change as a side effect of
       // a status update, by anyone, at any stage — only the fields each
@@ -195,7 +310,7 @@ service cloud.firestore {
           (
             resource.data.status == 'Pending Level 1 Approval' &&
             request.auth.uid == resource.data.immediateManagerId &&
-            hasPermission('approve_requests') &&
+            (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests')) &&
             request.resource.data.status in ['Pending Level 2 Approval', 'Rejected'] &&
             fieldUnchanged('rid')
           ) ||
@@ -206,7 +321,7 @@ service cloud.firestore {
           (
             resource.data.status == 'Pending Level 2 Approval' &&
             request.auth.uid == resource.data.nextApprovingManagerId &&
-            hasPermission('approve_requests') &&
+            (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests')) &&
             request.resource.data.status in ['RID Raised', 'Rejected']
           ) ||
 

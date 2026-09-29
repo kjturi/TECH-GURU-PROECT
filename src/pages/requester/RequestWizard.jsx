@@ -1,10 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
 import { useAdmins } from '../../hooks/useAdmins.js'
+import { usePackages, useDirectory, useOrgUnits } from '../../hooks/useOrg.js'
+import {
+  JOB_ROLE_LABELS,
+  PACKAGE_PERMISSIONS,
+  jobRoleRank,
+  packageAccess,
+  packageAllows,
+  pickApprovers,
+} from '../../data/jobRoles.js'
 import { PRIORITIES, STATUS } from '../../data/requestStatuses.js'
 import { ADMIN_PERMISSIONS, hasAdminPermission } from '../../data/adminPermissions.js'
 import { DEVICE_TYPES, DEVICE_TYPE_KEYS } from '../../data/deviceTypes.js'
@@ -182,7 +191,29 @@ export default function RequestWizard() {
   const navigate = useNavigate()
   const { submitRequest } = useRequests({ uid: user.uid, isAdmin: false })
   const { admins: allAdmins, loading: adminsLoading } = useAdmins()
-  const admins = allAdmins.filter((a) => hasAdminPermission(a, ADMIN_PERMISSIONS.APPROVE_REQUESTS))
+  const { packages, loading: packagesLoading } = usePackages()
+  const { directory, loading: directoryLoading } = useDirectory()
+  const { businessUnits, teams } = useOrgUnits()
+
+  // Everyone who may be named as an approver: people whose role package can
+  // approve, plus legacy Admin accounts with the approve permission (the
+  // pre-packages approvers). firestore.rules accepts exactly these two.
+  const directoryApprovers = directory
+    .filter((e) => e.id !== user.uid && packageAllows(packages[e.jobRole], PACKAGE_PERMISSIONS.APPROVE_REQUESTS))
+    .sort((a, b) => jobRoleRank(a.jobRole) - jobRoleRank(b.jobRole) || a.name.localeCompare(b.name))
+    .map((e) => ({ id: e.id, name: e.name, label: `${e.name} — ${JOB_ROLE_LABELS[e.jobRole]}` }))
+  const listed = new Set(directoryApprovers.map((a) => a.id))
+  const adminApprovers = allAdmins
+    .filter((a) => a.id !== user.uid && !listed.has(a.id) && hasAdminPermission(a, ADMIN_PERMISSIONS.APPROVE_REQUESTS))
+    .map((a) => ({ id: a.id, name: a.name, label: `${a.name} — Admin` }))
+  const approvers = [...directoryApprovers, ...adminApprovers]
+  const approversLoading = adminsLoading || packagesLoading || directoryLoading
+
+  const me = directory.find((e) => e.id === user.uid)
+  const suggested = pickApprovers(me, directory, packages)
+  const myTeam = teams.find((t) => t.id === me?.teamId)
+  const myBu = businessUnits.find((b) => b.id === me?.buId)
+  const submitAccess = packageAccess(profile, packages, PACKAGE_PERMISSIONS.SUBMIT_REQUESTS)
 
   const [step, setStep] = useState(1) // 1 details, 2 choose, 3 review, 4 done
   const [form, setForm] = useState(() => emptyForm(profile))
@@ -192,6 +223,15 @@ export default function RequestWizard() {
   const [submittedId, setSubmittedId] = useState(null)
 
   const fullName = `${form.firstName} ${form.surname}`.trim()
+
+  // Pre-fill approvers from the team hierarchy whenever a slot is empty —
+  // the requester can still change either one.
+  const suggestedL1 = suggested.l1?.id || ''
+  const suggestedL2 = suggested.l2?.id || ''
+  useEffect(() => {
+    if (!form.immediateManagerId && suggestedL1) set('immediateManagerId', suggestedL1)
+    if (!form.nextApprovingManagerId && suggestedL2) set('nextApprovingManagerId', suggestedL2)
+  }, [suggestedL1, suggestedL2, form.immediateManagerId, form.nextApprovingManagerId])
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }))
@@ -262,6 +302,10 @@ export default function RequestWizard() {
       setError('Please select both an Immediate Manager and a Next Approving Manager.')
       return
     }
+    if (form.immediateManagerId === form.nextApprovingManagerId) {
+      setError('Level 1 and Level 2 need two different approvers.')
+      return
+    }
     if (!form.justification.trim()) {
       setError('Please add a reason for this request.')
       return
@@ -271,8 +315,8 @@ export default function RequestWizard() {
       return
     }
 
-    const immediateManager = admins.find((a) => a.id === form.immediateManagerId)
-    const nextApprovingManager = admins.find((a) => a.id === form.nextApprovingManagerId)
+    const immediateManager = approvers.find((a) => a.id === form.immediateManagerId)
+    const nextApprovingManager = approvers.find((a) => a.id === form.nextApprovingManagerId)
 
     setSubmitting(true)
     try {
@@ -301,6 +345,23 @@ export default function RequestWizard() {
   }
 
   const chosenMeta = form.assetTypeKey && form.assetTypeKey !== 'other' ? DEVICE_TYPES[form.assetTypeKey] : null
+
+  if (!packagesLoading && !submitAccess.ok) {
+    return (
+      <>
+        <Topbar title="Request an Asset" />
+        <div className="empty-panel">
+          <p>{submitAccess.message}</p>
+          <Link className="btn btn-secondary" to="/requester/requests">Back to Requests</Link>
+        </div>
+      </>
+    )
+  }
+
+  const approverOptions = (suggestedId) =>
+    approvers.map((a) => (
+      <option key={a.id} value={a.id}>{a.label}{a.id === suggestedId ? ' (suggested)' : ''}</option>
+    ))
 
   return (
     <>
@@ -524,23 +585,38 @@ export default function RequestWizard() {
             <legend>Approvers</legend>
             <p style={{ marginBottom: 10, color: '#6b7280', fontSize: '0.88rem' }}>
               Your Immediate Manager decides the Level 1 approval, and your Next Approving Manager decides
-              the Level 2 approval — only the person you pick here will be able to act on each stage.
+              the Level 2 approval — only the person named here will be able to act on each stage.
             </p>
-            {adminsLoading ? (
-              <p className="state-msg">Loading approvers…</p>
-            ) : admins.length === 0 ? (
-              <p className="state-msg error">No admin accounts are registered yet, so there's no one to approve this request. Contact your administrator.</p>
+            {approversLoading ? (
+              <p className="state-msg">Finding your approvers…</p>
+            ) : approvers.length === 0 ? (
+              <p className="state-msg error">No one is set up as an approver yet, so this request can't be routed. Contact your administrator.</p>
             ) : (
-              <div className="asset-form">
-                <select value={form.immediateManagerId} onChange={(e) => set('immediateManagerId', e.target.value)} required>
-                  <option value="">Immediate Manager (Level 1 approver)</option>
-                  {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-                <select value={form.nextApprovingManagerId} onChange={(e) => set('nextApprovingManagerId', e.target.value)} required>
-                  <option value="">Next Approving Manager (Level 2 approver)</option>
-                  {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
+              <>
+                <p className="approver-note">
+                  {!me
+                    ? "Your account isn't assigned to a team yet, so approvers couldn't be picked automatically — choose them below."
+                    : suggested.l1 && suggested.l2
+                      ? <>Picked automatically from {myTeam ? <strong>{myTeam.name}</strong> : 'your team'}{myBu && <> in <strong>{myBu.name}</strong></>}. You can change them if needed.</>
+                      : "We couldn't find two senior approvers in your team or BU — choose the missing one below."}
+                </p>
+                <div className="approver-grid">
+                  <label>
+                    <span className="field-group-label">Level 1 — Immediate Manager</span>
+                    <select value={form.immediateManagerId} onChange={(e) => set('immediateManagerId', e.target.value)} required>
+                      <option value="">Choose an approver</option>
+                      {approverOptions(suggestedL1)}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="field-group-label">Level 2 — Next Approving Manager</span>
+                    <select value={form.nextApprovingManagerId} onChange={(e) => set('nextApprovingManagerId', e.target.value)} required>
+                      <option value="">Choose an approver</option>
+                      {approverOptions(suggestedL2)}
+                    </select>
+                  </label>
+                </div>
+              </>
             )}
           </fieldset>
 

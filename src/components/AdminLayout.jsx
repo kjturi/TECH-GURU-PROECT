@@ -40,6 +40,7 @@ const ADMIN_LINKS = [
 
   { heading: 'Administration' },
   { to: '/admin/users', label: 'User Management', icon: '●', anyPermission: [ADMIN_PERMISSIONS.MANAGE_USERS, ADMIN_PERMISSIONS.PROVISION_TECHNICIANS] },
+  { to: '/admin/organization', label: 'Roles, Packages & Teams', icon: '◫', permission: ADMIN_PERMISSIONS.MANAGE_USERS },
   { to: '/admin/reports', label: 'Reports', icon: '▧', adminOnly: true },
   { to: '/admin/settings', label: 'System Settings', icon: '◎', adminOnly: true },
   { to: '/admin/profile', label: 'Profile', icon: '◉' },
