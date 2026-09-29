@@ -15,9 +15,9 @@ import {
   REQUEST_OPTIONS,
   REQUEST_OPTION_KEYS,
   BSP_OPTIONS,
-  BSP_OPTION_LABELS,
   DEFAULT_PLANS,
   defaultRequestEligibility,
+  planPackages,
 } from '../../data/requestPackages.js'
 import { ROLE_LABELS } from '../../data/adminPermissions.js'
 
@@ -285,13 +285,13 @@ function PlansTab() {
     return (
       <>
         <p className="org-intro">
-          CUG Postpaid plans ({DEFAULT_PLANS.join(', ')}) haven't been created yet. Creating them leaves every plan's
-          BSP option unassigned — pick them here afterwards.
+          CUG Postpaid plans ({DEFAULT_PLANS.join(', ')}) haven't been created yet. They start with no BSP
+          packages — tick which ones each plan includes afterwards.
         </p>
         <button
           className="btn btn-primary"
           disabled={busy}
-          onClick={() => save(Object.fromEntries(DEFAULT_PLANS.map((p) => [p, null])))}
+          onClick={() => save(Object.fromEntries(DEFAULT_PLANS.map((p) => [p, []])))}
         >
           Create plans {DEFAULT_PLANS.join(', ')}
         </button>
@@ -300,58 +300,62 @@ function PlansTab() {
     )
   }
 
-  const current = draft || plans
+  // Normalized to plan -> [bsp keys], whatever shape is stored.
+  const saved = Object.fromEntries(Object.keys(plans).map((p) => [p, planPackages(plans, p)]))
+  const current = draft || saved
   const planKeys = Object.keys(current).sort()
-  const rolesOnPlan = (plan) =>
-    JOB_ROLES.filter((r) => packages[r.key]?.postpaidPlan === plan).map((r) => r.label)
-  const changed = draft && JSON.stringify(draft) !== JSON.stringify(plans)
+  const rolesOnPlan = (plan) => JOB_ROLES.filter((r) => packages[r.key]?.postpaidPlan === plan).map((r) => r.label)
+  const changed = draft && JSON.stringify(draft) !== JSON.stringify(saved)
+
+  const toggle = (plan, bsp) => {
+    const list = current[plan] || []
+    setDraft({ ...current, [plan]: list.includes(bsp) ? list.filter((b) => b !== bsp) : [...list, bsp] })
+  }
 
   return (
     <>
       <p className="org-intro">
-        Choose which BSP option each CUG Postpaid plan gives. A requester's plan comes from their role package;
-        the BSP option shown on their request is taken from here when they submit.
+        Tick the BSP packages each CUG Postpaid plan includes. A requester's plan comes from their role
+        package, and on the request form they can pick one of the packages ticked for that plan — nothing else.
       </p>
-      <div className="table-wrap">
-        <table className="org-people">
-          <thead>
-            <tr><th>Plan</th><th>BSP option</th><th>Roles on this plan</th><th></th></tr>
-          </thead>
-          <tbody>
-            {planKeys.map((plan) => {
-              const roles = rolesOnPlan(plan)
-              return (
-                <tr key={plan}>
-                  <td><strong>Plan {plan}</strong></td>
-                  <td>
-                    <select
-                      value={current[plan] || ''}
-                      onChange={(e) => setDraft({ ...current, [plan]: e.target.value || null })}
-                    >
-                      <option value="">Not assigned yet</option>
-                      {BSP_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                    </select>
-                  </td>
-                  <td>{roles.length ? roles.join(', ') : <span className="muted">None</span>}</td>
-                  <td className="actions-cell">
-                    <button
-                      className="btn btn-danger"
-                      disabled={roles.length > 0}
-                      title={roles.length ? 'Move these roles to another plan first' : 'Remove plan'}
-                      onClick={() => {
-                        const next = { ...current }
-                        delete next[plan]
-                        setDraft(next)
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+
+      <div className="org-grid">
+        {planKeys.map((plan) => {
+          const roles = rolesOnPlan(plan)
+          return (
+            <article key={plan} className="org-card">
+              <div className="org-card-head">
+                <h3>Plan {plan}</h3>
+                <button
+                  className="btn btn-danger"
+                  disabled={roles.length > 0}
+                  title={roles.length ? 'Move these roles to another plan first' : 'Remove plan'}
+                  onClick={() => {
+                    const next = { ...current }
+                    delete next[plan]
+                    setDraft(next)
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+              <p className="org-note" style={{ marginTop: 0, marginBottom: 10 }}>
+                Roles: {roles.length ? roles.join(', ') : 'none'}
+              </p>
+              <div className="org-perms">
+                {BSP_OPTIONS.map((o) => (
+                  <label key={o.key} className="checkbox-inline">
+                    <input type="checkbox" checked={(current[plan] || []).includes(o.key)} onChange={() => toggle(plan, o.key)} />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+              {(current[plan] || []).length === 0 && (
+                <p className="org-note">No packages yet — people on this plan can't request CUG Postpaid.</p>
+              )}
+            </article>
+          )
+        })}
       </div>
 
       <form
@@ -360,7 +364,7 @@ function PlansTab() {
           e.preventDefault()
           const key = newPlan.trim()
           if (!key || key in current) return
-          setDraft({ ...current, [key]: null })
+          setDraft({ ...current, [key]: [] })
           setNewPlan('')
         }}
       >
@@ -375,10 +379,6 @@ function PlansTab() {
         </div>
       )}
       {message && <p className="org-note">{message}</p>}
-      <p className="org-note">
-        Unassigned plans: {planKeys.filter((p) => !plans[p]).map((p) => `Plan ${p}`).join(', ') || 'none'}.
-        {' '}BSP options: {BSP_OPTIONS.map((o) => BSP_OPTION_LABELS[o.key]).join(', ')}.
-      </p>
     </>
   )
 }

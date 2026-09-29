@@ -2,8 +2,9 @@
 // set per job role on their role package (packages/{jobRole}):
 //   requestOptions: ['cug_postpaid', 'cug_prepaid', 'dongle']
 //   postpaidPlan:   '2.4' | '2.5' | '2.6' | null
-// and which BSP option each postpaid plan means, in config/cugPlans:
-//   plans: { '2.4': 'bsp_voice_start' | null, ... }
+// and which BSP packages each postpaid plan includes, in config/cugPlans:
+//   plans: { '2.4': ['bsp_voice_start', 'bsp_data_start'], '2.5': [], ... }
+// A requester picks one BSP package from their role's plan.
 // Both are admin-editable (Roles, Packages & Teams). firestore.rules checks
 // every submitted request against them — keep the key lists in sync.
 
@@ -25,6 +26,16 @@ export const BSP_OPTIONS = [
 export const BSP_OPTION_LABELS = Object.fromEntries(BSP_OPTIONS.map((o) => [o.key, o.label]))
 
 export const DEFAULT_PLANS = ['2.4', '2.5', '2.6']
+
+/**
+ * BSP packages in the given plan (empty if the plan doesn't exist or has
+ * none yet). Tolerates the earlier single-option shape ('bsp_x' | null).
+ */
+export function planPackages(plans, plan) {
+  const value = plans && plan ? plans[plan] : null
+  if (Array.isArray(value)) return value
+  return typeof value === 'string' ? [value] : []
+}
 
 // Plan per role as specified by the business. Editable afterwards.
 export const DEFAULT_ROLE_PLAN = {

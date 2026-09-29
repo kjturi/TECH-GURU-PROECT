@@ -88,9 +88,9 @@ service cloud.firestore {
     }
 
     // A CUG / Dongle request must be one the requester's role package
-    // allows; CUG Postpaid must carry the role's plan and the BSP option
-    // that plan maps to in config/cugPlans; Dongle must answer "Router
-    // required?". Any other request carries none of these fields, and
+    // allows; CUG Postpaid must carry the role's plan and one of the BSP
+    // packages that plan includes in config/cugPlans; Dongle must answer
+    // "Router required?". Any other request carries none of these fields, and
     // can't name the CUG Mobile / Dongle asset types to get around this.
     function validRequestPackage() {
       let d = request.resource.data;
@@ -112,7 +112,8 @@ service cloud.firestore {
           ? (
               d.get('plan', null) is string &&
               d.plan == pkg.get('postpaidPlan', null) &&
-              d.get('bspOption', null) == (exists(planCfg) ? get(planCfg).data.plans.get(d.plan, null) : null)
+              d.get('bspOption', null) is string &&
+              d.bspOption in (exists(planCfg) ? get(planCfg).data.plans.get(d.plan, []) : [])
             )
           : (d.get('plan', null) == null && d.get('bspOption', null) == null)) &&
         (opt == 'dongle'

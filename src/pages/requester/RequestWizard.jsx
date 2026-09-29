@@ -11,6 +11,7 @@ import {
   CARD_REQUEST_OPTIONS,
   BSP_OPTION_LABELS,
   describeRequestPackage,
+  planPackages,
 } from '../../data/requestPackages.js'
 import {
   JOB_ROLE_LABELS,
@@ -26,12 +27,9 @@ import { DEVICE_TYPES, DEVICE_TYPE_KEYS } from '../../data/deviceTypes.js'
 import {
   HEADSET_OPTIONS,
   EXTENSION_ACCESS_OPTIONS,
-  CALL_CENTRE_OPTIONS,
   HANDSET_TYPE_ICONS,
   HEADSET_ICONS,
   EXTENSION_ACCESS_ICONS,
-  UC_REQUEST_ICONS,
-  CALL_CENTRE_ICONS,
   emptyTelephoneDetails,
 } from '../../data/assetCategories.js'
 
@@ -39,32 +37,42 @@ import {
 // treatment as the Telephone/UC option pickers below.
 const CATALOG_ICONS = { cug: '📱', headset: '🎧', deskphone: '📞', vodafone: '📶', digicel: '🔌', uc: '☎️' }
 
-// A catalog card for access-only requests (softphone, Webex, extension or
-// call-centre access) — not a physical device, so it isn't in DEVICE_TYPES.
+// "Telephone" card: a Softphone (Jabber) or a desk phone line, optionally
+// with a headset. Not a single inventory device type, so it isn't in
+// DEVICE_TYPES. (Key stays 'uc' so existing code paths are unchanged.)
 const UC_CARD = {
   key: 'uc',
-  label: 'Phone Line & UC Access',
-  description: 'Softphone, Webex, extension or call-centre access — no device needed.',
+  label: 'Telephone',
+  description: 'Softphone (Jabber) or desk phone, with an optional headset.',
+}
+
+// Phone type choices on the Telephone card — label shown, value saved as
+// telephoneDetails.handsetType.
+const PHONE_TYPES = [
+  { label: 'Softphone (Jabber)', value: 'Softphone' },
+  { label: 'Desk phone (Telephone)', value: 'Deskphone' },
+]
+const PHONE_TYPE_ICONS = {
+  'Softphone (Jabber)': HANDSET_TYPE_ICONS.Softphone,
+  'Desk phone (Telephone)': HANDSET_TYPE_ICONS.Deskphone,
 }
 
 // What "Configure this request" asks for each card, and what the card
 // already answers on its own. Picking "CUG Mobiles" already says the
 // request type is mobile, and "Desk Phones" already says telephone +
 // deskphone handset, so those are filled in (`implied`) instead of asked
-// again. Cards not listed here (Headsets, modems, Something else) have no
-// configure step and save no telephoneDetails at all.
+// again. Cards not listed here (CUG Mobiles, Headsets, modems, Something
+// else) have no configure step and save no telephoneDetails at all — a CUG
+// request is configured by its request package (Prepaid / Postpaid BSP
+// package) instead.
 const CARD_CONFIG = {
-  cug: {
-    implied: { requestTypes: ['Mobile Phone/Wireless'] },
-    ask: ['extensionAccess'],
-  },
   deskphone: {
     implied: { requestTypes: ['Telephone'], handsetType: 'Deskphone' },
     ask: ['headsetRequired', 'extensionAccess'],
   },
   uc: {
     implied: { requestTypes: ['Telephone'] },
-    ask: ['softphone', 'headsetRequired', 'extensionAccess', 'webex', 'callCentreAccess'],
+    ask: ['phoneType', 'headsetRequired'],
   },
 }
 
@@ -76,11 +84,9 @@ function buildTelephoneDetails(assetTypeKey, details) {
   const asked = new Set(config.ask)
   return {
     ...emptyTelephoneDetails(),
-    handsetType: asked.has('softphone') ? details.handsetType : '',
+    handsetType: asked.has('phoneType') ? details.handsetType : '',
     headsetRequired: asked.has('headsetRequired') ? details.headsetRequired : '',
     extensionAccess: asked.has('extensionAccess') ? details.extensionAccess : [],
-    webexRequested: asked.has('webex') ? details.webexRequested : false,
-    callCentreAccess: asked.has('callCentreAccess') ? details.callCentreAccess : [],
     ...config.implied,
   }
 }
@@ -88,11 +94,9 @@ function buildTelephoneDetails(assetTypeKey, details) {
 function describeTelephoneDetails(details) {
   if (!details) return []
   return [
-    details.handsetType === 'Softphone' && 'Softphone',
+    PHONE_TYPES.find((t) => t.value === details.handsetType)?.label,
     details.headsetRequired && `Headset: ${details.headsetRequired}`,
     details.extensionAccess.length > 0 && `Extension access: ${details.extensionAccess.join(', ')}`,
-    details.webexRequested && 'Webex',
-    details.callCentreAccess.length > 0 && `Call centre: ${details.callCentreAccess.join(', ')}`,
   ].filter(Boolean)
 }
 
@@ -133,6 +137,7 @@ function emptyForm(profile) {
     declarationAccepted: false,
     telephoneDetails: emptyTelephoneDetails(),
     requestPackage: '',
+    bspOption: '',
     routerRequired: null,
   }
 }
@@ -228,11 +233,25 @@ export default function RequestWizard() {
   const { plans: cugPlans } = useCugPlans()
   const myPackage = packages[profile?.jobRole]
   const myPlan = myPackage?.postpaidPlan || null
-  const myBsp = myPlan && cugPlans ? cugPlans[myPlan] || null : null
-  const optionAvailable = (opt) =>
-    (myPackage?.requestOptions || []).includes(opt) && (opt !== 'cug_postpaid' || !!myPlan)
-  const cardOptions = (key) => (CARD_REQUEST_OPTIONS[key] || []).filter(optionAvailable)
-  const isCardAvailable = (key) => !CARD_REQUEST_OPTIONS[key] || cardOptions(key).length > 0
+  // BSP packages the admin has put in this person's plan (CUG Plans tab).
+  const myBspPackages = planPackages(cugPlans, myPlan)
+  const eligible = (opt) => (myPackage?.requestOptions || []).includes(opt)
+  // Postpaid is eligible but the plan has no BSP packages ticked yet.
+  const postpaidPending = eligible('cug_postpaid') && (!myPlan || myBspPackages.length === 0)
+
+  // Every package a card offers, flattened: CUG Postpaid becomes one choice
+  // per BSP package in the person's plan.
+  function cardChoices(key) {
+    return (CARD_REQUEST_OPTIONS[key] || []).filter(eligible).flatMap((opt) =>
+      opt === 'cug_postpaid'
+        ? (myPlan ? myBspPackages : []).map((bsp) => ({ requestPackage: opt, bspOption: bsp, label: BSP_OPTION_LABELS[bsp] || bsp }))
+        : [{ requestPackage: opt, bspOption: '', label: REQUEST_OPTIONS[opt].label }]
+    )
+  }
+  const isCardAvailable = (key) =>
+    !CARD_REQUEST_OPTIONS[key] ||
+    cardChoices(key).length > 0 ||
+    (CARD_REQUEST_OPTIONS[key].includes('cug_postpaid') && postpaidPending)
   const hiddenCards = DEVICE_TYPE_KEYS.filter((key) => !isCardAvailable(key))
 
   const [step, setStep] = useState(1) // 1 details, 2 choose, 3 review, 4 done
@@ -270,22 +289,19 @@ export default function RequestWizard() {
     setTelephone(field, value)
     setOpenGroup(null)
   }
-  function toggleWebex() {
-    setTelephone('webexRequested', !form.telephoneDetails.webexRequested)
-    setOpenGroup(null)
-  }
 
   function selectAssetType(key) {
-    const options = cardOptions(key)
+    const choices = cardChoices(key)
     set('assetTypeKey', key)
     set('assetType', key === 'other' ? '' : key === UC_CARD.key ? UC_CARD.label : DEVICE_TYPES[key].label)
     set('telephoneDetails', emptyTelephoneDetails())
-    set('requestPackage', options.length === 1 ? options[0] : '')
+    set('requestPackage', choices.length === 1 ? choices[0].requestPackage : '')
+    set('bspOption', choices.length === 1 ? choices[0].bspOption : '')
     set('routerRequired', null)
     setOpenGroup(null)
   }
-  function toggleSoftphone() {
-    setTelephone('handsetType', form.telephoneDetails.handsetType === 'Softphone' ? '' : 'Softphone')
+  function pickPhoneType(label) {
+    setTelephone('handsetType', PHONE_TYPES.find((t) => t.label === label)?.value || '')
     setOpenGroup(null)
   }
 
@@ -309,14 +325,19 @@ export default function RequestWizard() {
   const cardConfig = CARD_CONFIG[form.assetTypeKey]
   const telephoneDetails = buildTelephoneDetails(form.assetTypeKey, form.telephoneDetails)
   const telephoneSummary = describeTelephoneDetails(telephoneDetails)
-  // An access-only request has to ask for at least one kind of access.
-  const ucChoiceMissing = form.assetTypeKey === UC_CARD.key && telephoneSummary.length === 0
-  const packageChoices = cardOptions(form.assetTypeKey)
+  // A Telephone request has to say which kind of phone.
+  const ucChoiceMissing = form.assetTypeKey === UC_CARD.key && !form.telephoneDetails.handsetType
+  const packageChoices = cardChoices(form.assetTypeKey)
+  const isChosen = (c) => form.requestPackage === c.requestPackage && form.bspOption === c.bspOption
+  function choosePackage(c) {
+    set('requestPackage', c.requestPackage)
+    set('bspOption', c.bspOption)
+  }
   const isPackageCard = !!CARD_REQUEST_OPTIONS[form.assetTypeKey]
   const requestPackageFields = {
     requestPackage: isPackageCard ? form.requestPackage || null : null,
     plan: isPackageCard && form.requestPackage === 'cug_postpaid' ? myPlan : null,
-    bspOption: isPackageCard && form.requestPackage === 'cug_postpaid' ? myBsp : null,
+    bspOption: isPackageCard && form.requestPackage === 'cug_postpaid' ? form.bspOption || null : null,
     routerRequired: isPackageCard && form.requestPackage === 'dongle' ? form.routerRequired : null,
   }
   const requestPackageSummary = describeRequestPackage(requestPackageFields)
@@ -324,6 +345,7 @@ export default function RequestWizard() {
     form.assetTypeKey &&
     !ucChoiceMissing &&
     (!isPackageCard || !!form.requestPackage) &&
+    (form.requestPackage !== 'cug_postpaid' || !!form.bspOption) &&
     (form.requestPackage !== 'dongle' || typeof form.routerRequired === 'boolean') &&
     (form.assetTypeKey !== 'other' || form.assetType.trim()) &&
     Number(form.quantity) >= 1 &&
@@ -531,31 +553,57 @@ export default function RequestWizard() {
               {isPackageCard && (
                 <fieldset className="form-fieldset">
                   <legend>Request package</legend>
-                  {packageChoices.length > 1 ? (
-                    <div className="option-picker-grid" style={{ paddingLeft: 0 }}>
-                      {packageChoices.map((opt) => (
-                        <button
+                  {form.assetTypeKey === 'cug' ? (
+                    <>
+                      {packageChoices.some((c) => c.requestPackage === 'cug_prepaid') && (
+                        <div className="package-group">
+                          <span className="field-group-label">Prepaid</span>
+                          <div className="option-picker-grid" style={{ paddingLeft: 0 }}>
+                            {packageChoices.filter((c) => c.requestPackage === 'cug_prepaid').map((c) => (
+                              <button
                           type="button"
-                          key={opt}
-                          className={`option-btn${form.requestPackage === opt ? ' selected' : ''}`}
-                          aria-pressed={form.requestPackage === opt}
-                          onClick={() => set('requestPackage', opt)}
+                          key={`${c.requestPackage}-${c.bspOption}`}
+                          className={`option-btn${isChosen(c) ? ' selected' : ''}`}
+                          aria-pressed={isChosen(c)}
+                          onClick={() => choosePackage(c)}
                         >
-                          <span>{REQUEST_OPTIONS[opt].label}</span>
-                          {form.requestPackage === opt && <span className="option-btn-check" aria-hidden="true">✓</span>}
+                          <span>{c.label}</span>
+                          {isChosen(c) && <span className="option-btn-check" aria-hidden="true">✓</span>}
                         </button>
-                      ))}
-                    </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {eligible('cug_postpaid') && (
+                        <div className="package-group">
+                          <span className="field-group-label">Postpaid{myPlan && <> — Plan {myPlan}</>}</span>
+                          {postpaidPending ? (
+                            <p className="package-line muted">
+                              {myPlan
+                                ? `Postpaid packages for Plan ${myPlan} haven't been set up yet — ask IT.`
+                                : "Your role package doesn't have a postpaid plan yet — ask IT."}
+                            </p>
+                          ) : (
+                            <div className="option-picker-grid" style={{ paddingLeft: 0 }}>
+                              {packageChoices.filter((c) => c.requestPackage === 'cug_postpaid').map((c) => (
+                                <button
+                          type="button"
+                          key={`${c.requestPackage}-${c.bspOption}`}
+                          className={`option-btn${isChosen(c) ? ' selected' : ''}`}
+                          aria-pressed={isChosen(c)}
+                          onClick={() => choosePackage(c)}
+                        >
+                          <span>{c.label}</span>
+                          {isChosen(c) && <span className="option-btn-check" aria-hidden="true">✓</span>}
+                        </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <p className="package-line"><strong>{REQUEST_OPTIONS[form.requestPackage]?.label}</strong></p>
-                  )}
-
-                  {form.requestPackage === 'cug_postpaid' && (
-                    <p className="package-line">
-                      Your plan: <strong>Plan {myPlan}</strong>
-                      {' · '}BSP option:{' '}
-                      {myBsp ? <strong>{BSP_OPTION_LABELS[myBsp] || myBsp}</strong> : <span className="muted">not assigned yet — IT will confirm</span>}
-                    </p>
                   )}
 
                   {form.requestPackage === 'dongle' && (
@@ -583,12 +631,12 @@ export default function RequestWizard() {
               {cardConfig && (
                 <fieldset className="form-fieldset">
                   <legend>Configure this request</legend>
-                  {cardConfig.ask.includes('softphone') && (
+                  {cardConfig.ask.includes('phoneType') && (
                     <OptionPicker
-                      label="Softphone" options={['Softphone']} icons={HANDSET_TYPE_ICONS}
-                      selected={form.telephoneDetails.handsetType === 'Softphone' ? ['Softphone'] : []} multi
-                      onToggle={toggleSoftphone}
-                      open={openGroup === 'softphone'} onToggleOpen={() => toggleOpenGroup('softphone')}
+                      label="Phone type" options={PHONE_TYPES.map((t) => t.label)} icons={PHONE_TYPE_ICONS}
+                      selected={PHONE_TYPES.find((t) => t.value === form.telephoneDetails.handsetType)?.label || ''}
+                      onToggle={pickPhoneType}
+                      open={openGroup === 'phoneType'} onToggleOpen={() => toggleOpenGroup('phoneType')}
                     />
                   )}
                   {cardConfig.ask.includes('headsetRequired') && (
@@ -607,24 +655,8 @@ export default function RequestWizard() {
                       open={openGroup === 'extensionAccess'} onToggleOpen={() => toggleOpenGroup('extensionAccess')}
                     />
                   )}
-                  {cardConfig.ask.includes('webex') && (
-                    <OptionPicker
-                      label="UC Request" options={['Webex']} icons={UC_REQUEST_ICONS}
-                      selected={form.telephoneDetails.webexRequested ? ['Webex'] : []} multi
-                      onToggle={toggleWebex}
-                      open={openGroup === 'webex'} onToggleOpen={() => toggleOpenGroup('webex')}
-                    />
-                  )}
-                  {cardConfig.ask.includes('callCentreAccess') && (
-                    <OptionPicker
-                      label="Call Centre & IT Helpdesk" options={CALL_CENTRE_OPTIONS} icons={CALL_CENTRE_ICONS}
-                      selected={form.telephoneDetails.callCentreAccess} multi
-                      onToggle={(v) => toggleMulti('callCentreAccess', v)}
-                      open={openGroup === 'callCentreAccess'} onToggleOpen={() => toggleOpenGroup('callCentreAccess')}
-                    />
-                  )}
                   {ucChoiceMissing && (
-                    <p className="wizard-subtext" style={{ marginTop: 8 }}>Choose at least one kind of access to continue.</p>
+                    <p className="wizard-subtext" style={{ marginTop: 8 }}>Choose Softphone (Jabber) or Desk phone to continue.</p>
                   )}
                 </fieldset>
               )}
