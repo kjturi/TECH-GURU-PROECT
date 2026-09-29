@@ -37,25 +37,18 @@ import {
 // treatment as the Telephone/UC option pickers below.
 const CATALOG_ICONS = { cug: '📱', headset: '🎧', deskphone: '📞', vodafone: '📶', digicel: '🔌', uc: '☎️' }
 
-// "Telephone" card: a Softphone (Jabber) or a desk phone line, optionally
-// with a headset. Not a single inventory device type, so it isn't in
-// DEVICE_TYPES. (Key stays 'uc' so existing code paths are unchanged.)
+// "Telephone" card: a Softphone (Jabber) line, optionally with a headset.
+// Physical desk phones are requested from the Desk Phones card instead.
+// Not an inventory device type, so it isn't in DEVICE_TYPES. (Key stays
+// 'uc' so existing code paths are unchanged.)
 const UC_CARD = {
   key: 'uc',
   label: 'Telephone',
-  description: 'Softphone (Jabber) or desk phone, with an optional headset.',
+  description: 'Softphone (Jabber) line, with an optional headset. For a physical handset, choose Desk Phones.',
 }
 
-// Phone type choices on the Telephone card — label shown, value saved as
-// telephoneDetails.handsetType.
-const PHONE_TYPES = [
-  { label: 'Softphone (Jabber)', value: 'Softphone' },
-  { label: 'Desk phone (Telephone)', value: 'Deskphone' },
-]
-const PHONE_TYPE_ICONS = {
-  'Softphone (Jabber)': HANDSET_TYPE_ICONS.Softphone,
-  'Desk phone (Telephone)': HANDSET_TYPE_ICONS.Deskphone,
-}
+// How handsetType values read on the Review step.
+const HANDSET_LABELS = { Softphone: 'Softphone (Jabber)' }
 
 // What "Configure this request" asks for each card, and what the card
 // already answers on its own. Picking "CUG Mobiles" already says the
@@ -71,8 +64,8 @@ const CARD_CONFIG = {
     ask: ['headsetRequired', 'extensionAccess'],
   },
   uc: {
-    implied: { requestTypes: ['Telephone'] },
-    ask: ['phoneType', 'headsetRequired'],
+    implied: { requestTypes: ['Telephone'], handsetType: 'Softphone' },
+    ask: ['headsetRequired'],
   },
 }
 
@@ -84,7 +77,6 @@ function buildTelephoneDetails(assetTypeKey, details) {
   const asked = new Set(config.ask)
   return {
     ...emptyTelephoneDetails(),
-    handsetType: asked.has('phoneType') ? details.handsetType : '',
     headsetRequired: asked.has('headsetRequired') ? details.headsetRequired : '',
     extensionAccess: asked.has('extensionAccess') ? details.extensionAccess : [],
     ...config.implied,
@@ -94,7 +86,7 @@ function buildTelephoneDetails(assetTypeKey, details) {
 function describeTelephoneDetails(details) {
   if (!details) return []
   return [
-    PHONE_TYPES.find((t) => t.value === details.handsetType)?.label,
+    HANDSET_LABELS[details.handsetType],
     details.headsetRequired && `Headset: ${details.headsetRequired}`,
     details.extensionAccess.length > 0 && `Extension access: ${details.extensionAccess.join(', ')}`,
   ].filter(Boolean)
@@ -300,10 +292,6 @@ export default function RequestWizard() {
     set('routerRequired', null)
     setOpenGroup(null)
   }
-  function pickPhoneType(label) {
-    setTelephone('handsetType', PHONE_TYPES.find((t) => t.label === label)?.value || '')
-    setOpenGroup(null)
-  }
 
   function goTo(n) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -325,8 +313,6 @@ export default function RequestWizard() {
   const cardConfig = CARD_CONFIG[form.assetTypeKey]
   const telephoneDetails = buildTelephoneDetails(form.assetTypeKey, form.telephoneDetails)
   const telephoneSummary = describeTelephoneDetails(telephoneDetails)
-  // A Telephone request has to say which kind of phone.
-  const ucChoiceMissing = form.assetTypeKey === UC_CARD.key && !form.telephoneDetails.handsetType
   const packageChoices = cardChoices(form.assetTypeKey)
   const isChosen = (c) => form.requestPackage === c.requestPackage && form.bspOption === c.bspOption
   function choosePackage(c) {
@@ -343,7 +329,6 @@ export default function RequestWizard() {
   const requestPackageSummary = describeRequestPackage(requestPackageFields)
   const canProceedFromChoose =
     form.assetTypeKey &&
-    !ucChoiceMissing &&
     (!isPackageCard || !!form.requestPackage) &&
     (form.requestPackage !== 'cug_postpaid' || !!form.bspOption) &&
     (form.requestPackage !== 'dongle' || typeof form.routerRequired === 'boolean') &&
@@ -631,13 +616,10 @@ export default function RequestWizard() {
               {cardConfig && (
                 <fieldset className="form-fieldset">
                   <legend>Configure this request</legend>
-                  {cardConfig.ask.includes('phoneType') && (
-                    <OptionPicker
-                      label="Phone type" options={PHONE_TYPES.map((t) => t.label)} icons={PHONE_TYPE_ICONS}
-                      selected={PHONE_TYPES.find((t) => t.value === form.telephoneDetails.handsetType)?.label || ''}
-                      onToggle={pickPhoneType}
-                      open={openGroup === 'phoneType'} onToggleOpen={() => toggleOpenGroup('phoneType')}
-                    />
+                  {form.assetTypeKey === UC_CARD.key && (
+                    <p className="package-line" style={{ marginBottom: 6 }}>
+                      <span aria-hidden="true">{HANDSET_TYPE_ICONS.Softphone}</span> Includes a <strong>Softphone (Jabber)</strong> line.
+                    </p>
                   )}
                   {cardConfig.ask.includes('headsetRequired') && (
                     <OptionPicker
@@ -654,9 +636,6 @@ export default function RequestWizard() {
                       onToggle={(v) => toggleMulti('extensionAccess', v)}
                       open={openGroup === 'extensionAccess'} onToggleOpen={() => toggleOpenGroup('extensionAccess')}
                     />
-                  )}
-                  {ucChoiceMissing && (
-                    <p className="wizard-subtext" style={{ marginTop: 8 }}>Choose Softphone (Jabber) or Desk phone to continue.</p>
                   )}
                 </fieldset>
               )}
