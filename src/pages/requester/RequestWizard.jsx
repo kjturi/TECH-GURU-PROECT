@@ -113,7 +113,6 @@ function emptyForm(profile) {
     justification: '',
     priority: 'Medium',
     dateRequired: '',
-    comments: '',
     immediateManagerId: '',
     nextApprovingManagerId: '',
     declarationAccepted: false,
@@ -509,22 +508,15 @@ export default function RequestWizard() {
             <p style={{ fontSize: '0.9rem' }}>{fullName} · {form.employeeId} · {form.department}</p>
           </div>
 
-          <label>
-            <span className="field-group-label">Reason for this request</span>
+          <label style={{ display: 'block' }}>
+            <span className="field-group-label" style={{ display: 'block', marginBottom: 6 }}>Reason for this request</span>
             <textarea
               value={form.justification}
               onChange={(e) => set('justification', e.target.value)}
               rows={3}
               placeholder="Business justification"
               required
-            />
-          </label>
-          <label style={{ display: 'block', marginTop: 12 }}>
-            <span className="field-group-label">Additional comments (optional)</span>
-            <textarea
-              value={form.comments}
-              onChange={(e) => set('comments', e.target.value)}
-              rows={2}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, font: 'inherit', fontSize: '0.9rem' }}
             />
           </label>
 
