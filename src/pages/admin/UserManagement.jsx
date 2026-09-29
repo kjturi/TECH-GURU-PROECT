@@ -1,9 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import DataState from '../../components/DataState.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useUsers } from '../../hooks/useUsers.js'
+import { usePackages, useOrgUnits, assignJobRole } from '../../hooks/useOrg.js'
+import { JOB_ROLES, JOB_ROLE_LABELS } from '../../data/jobRoles.js'
 import {
   ROLES,
   ROLE_LABELS,
@@ -54,8 +57,11 @@ function PermissionBadges({ user }) {
 export default function UserManagement() {
   const { user: currentUser, profile } = useAuth()
   const { users, loading, error, setRole } = useUsers(true)
-  const [dialog, setDialog] = useState(null) // { user, role, permissions }
+  const [dialog, setDialog] = useState(null) // { user, role, permissions, job: { jobRole, buId, teamId } }
   const [busy, setBusy] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const { packages } = usePackages()
+  const { businessUnits, teams } = useOrgUnits()
 
   const canManageAll = hasAdminPermission(profile, ADMIN_PERMISSIONS.MANAGE_USERS)
   const canProvisionOnly = !canManageAll && hasAdminPermission(profile, ADMIN_PERMISSIONS.PROVISION_TECHNICIANS)
@@ -73,12 +79,19 @@ export default function UserManagement() {
     : [ROLES.REQUESTER, ROLES.TECHNICIAN_ADMIN]
 
   function openChangeRole(u) {
+    setSaveError(null)
     setDialog({
       user: u,
       role: u.role,
       permissions: u.role === ROLES.ADMIN && u.permissions !== undefined ? u.permissions : PERMISSION_KEYS,
+      job: { jobRole: u.jobRole || '', buId: u.buId || '', teamId: u.teamId || '' },
     })
   }
+  function setJob(patch) {
+    setDialog((d) => ({ ...d, job: { ...d.job, ...patch } }))
+  }
+  const teamName = (id) => teams.find((t) => t.id === id)?.name
+  const buName = (id) => businessUnits.find((b) => b.id === id)?.name
 
   function changeDialogRole(role) {
     setDialog((d) => ({
@@ -93,7 +106,16 @@ export default function UserManagement() {
 
   async function handleConfirm() {
     setBusy(true)
+    setSaveError(null)
     try {
+      // Job role / BU / team (Manage Users admins only — the rules reject
+      // it for anyone else, and for your own account).
+      const { job, user: target } = dialog
+      const jobChanged =
+        job.jobRole !== (target.jobRole || '') || job.buId !== (target.buId || '') || job.teamId !== (target.teamId || '')
+      if (canManageAll && jobChanged) {
+        await assignJobRole(target, job)
+      }
       if (dialog.role === ROLES.ADMIN) {
         await setRole(dialog.user.id, ROLES.ADMIN, dialog.permissions)
       } else if (dialog.role === ROLES.REQUESTER) {
@@ -102,6 +124,9 @@ export default function UserManagement() {
         await setRole(dialog.user.id, dialog.role, ROLE_DEFAULT_PERMISSIONS[dialog.role])
       }
       setDialog(null)
+    } catch (err) {
+      console.error('[UserManagement] save failed:', err)
+      setSaveError('Could not save these changes. You may not have permission to make them.')
     } finally {
       setBusy(false)
     }
@@ -110,6 +135,13 @@ export default function UserManagement() {
   return (
     <>
       <Topbar title="User Management" />
+      {canManageAll && (
+        <p className="org-intro">
+          Each person has an <strong>app role</strong> (what they can do in the IT admin area) and a{' '}
+          <strong>job role</strong> (their position — it sets their package and who approves their requests).
+          Set up packages, business units and teams in <Link to="/admin/organization">Roles, Packages &amp; Teams</Link>.
+        </p>
+      )}
       {canProvisionOnly && (
         <p className="state-msg" style={{ marginBottom: 16 }}>
           You have Inventory Admin access: you can promote a requester to Technician Admin, or revert an existing
@@ -120,7 +152,7 @@ export default function UserManagement() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Department</th><th>Employee ID</th><th>Role</th><th>Permissions</th><th></th></tr>
+              <tr><th>Name</th><th>Email</th><th>Department</th><th>Employee ID</th><th>App Role</th><th>Job Role</th><th>Permissions</th><th></th></tr>
             </thead>
             <tbody>
               {visibleUsers.map((u) => (
@@ -130,13 +162,27 @@ export default function UserManagement() {
                   <td>{u.department}</td>
                   <td>{u.employeeId}</td>
                   <td>{ROLE_LABELS[u.role] || u.role}</td>
+                  <td>
+                    {u.jobRole ? (
+                      <>
+                        {JOB_ROLE_LABELS[u.jobRole] || u.jobRole}
+                        {(u.teamId || u.buId) && (
+                          <div className="muted" style={{ fontSize: '0.8rem' }}>
+                            {[teamName(u.teamId), buName(u.buId)].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="muted">Not set</span>
+                    )}
+                  </td>
                   <td><PermissionBadges user={u} /></td>
                   <td className="actions-cell">
                     {u.id === currentUser.uid ? (
                       <span className="badge">You</span>
                     ) : (
                       <button className="btn btn-secondary" onClick={() => openChangeRole(u)}>
-                        Change Role
+                        Edit Roles
                       </button>
                     )}
                   </td>
@@ -149,8 +195,8 @@ export default function UserManagement() {
 
       <ConfirmDialog
         open={!!dialog}
-        title={dialog ? `Change role — ${dialog.user.name}` : ''}
-        message={dialog ? `Currently: ${ROLE_LABELS[dialog.user.role] || dialog.user.role}.` : ''}
+        title={dialog ? `Edit roles — ${dialog.user.name}` : ''}
+        message=''
         confirmLabel="Save"
         danger={!!dialog && dialog.role === ROLES.REQUESTER && dialog.user.role !== ROLES.REQUESTER}
         busy={busy}
@@ -160,7 +206,7 @@ export default function UserManagement() {
         {dialog && (
           <div className="field-group" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
             <label style={{ width: '100%' }}>
-              Role
+              App role
               <select value={dialog.role} onChange={(e) => changeDialogRole(e.target.value)} style={{ display: 'block', width: '100%' }}>
                 {roleOptions.map((r) => (
                   <option key={r} value={r}>{ROLE_LABELS[r]}</option>
@@ -181,6 +227,57 @@ export default function UserManagement() {
                 {ROLE_DEFAULT_PERMISSIONS[dialog.role].map((p) => ADMIN_PERMISSION_LABELS[p]).join('; ')}.
               </p>
             )}
+
+            {canManageAll && (
+              <div className="um-job">
+                <label>
+                  Job role
+                  <select value={dialog.job.jobRole} onChange={(e) => setJob({ jobRole: e.target.value })}>
+                    <option value="">No job role</option>
+                    {JOB_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Business unit
+                  <select
+                    value={dialog.job.buId}
+                    disabled={!dialog.job.jobRole}
+                    onChange={(e) => setJob({ buId: e.target.value, teamId: '' })}
+                  >
+                    <option value="">—</option>
+                    {businessUnits.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Team
+                  <select
+                    value={dialog.job.teamId}
+                    disabled={!dialog.job.buId}
+                    onChange={(e) => setJob({ teamId: e.target.value })}
+                  >
+                    <option value="">{dialog.job.buId ? 'BU level (no team)' : '—'}</option>
+                    {teams.filter((t) => t.buId === dialog.job.buId).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </label>
+                {dialog.job.jobRole && (
+                  <p className="um-job-pkg">
+                    Package:{' '}
+                    {packages[dialog.job.jobRole]
+                      ? <strong>{packages[dialog.job.jobRole].name}</strong>
+                      : <span className="badge badge-rejected">Not configured yet</span>}
+                  </p>
+                )}
+                {businessUnits.length === 0 && (
+                  <p className="um-job-pkg">
+                    No business units yet — add them in <Link to="/admin/organization">Roles, Packages &amp; Teams</Link>.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {saveError && <p className="state-msg error">{saveError}</p>}
           </div>
         )}
       </ConfirmDialog>

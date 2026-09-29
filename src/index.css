@@ -614,6 +614,8 @@ table td.actions-cell {
   padding: 24px;
   max-width: 420px;
   width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
 }
 .dialog-box h3 {
@@ -1816,4 +1818,30 @@ table td.actions-cell {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* User Management — job role section in the Edit Roles dialog */
+.um-job {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--accent-light);
+}
+.um-job label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.um-job select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+.um-job-pkg {
+  font-size: 0.85rem;
+  color: #4b5563;
 }
