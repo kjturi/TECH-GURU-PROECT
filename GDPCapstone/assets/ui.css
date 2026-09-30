@@ -1,0 +1,110 @@
+/* Shared in-page alerts for the Inventory system (replaces browser popups). */
+
+/* Inline field validation */
+.field.has-error input,
+.field.has-error select,
+.has-error input,
+.has-error select {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px #fee2e2 !important;
+}
+.field-error {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #991b1b;
+}
+.field-error::before {
+  content: "\26A0  ";
+}
+
+/* Dismissible page message */
+.message,
+.error {
+  position: relative;
+  padding-right: 40px !important;
+}
+.message .msg-close,
+.error .msg-close {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  padding: 4px 6px;
+}
+.message .msg-close:hover { opacity: 1; }
+
+/* Confirmation dialog */
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 95, 70, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: ui-fade 0.15s ease-out;
+}
+.ui-dialog {
+  background: #fff;
+  width: 100%;
+  max-width: 420px;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  border-top: 6px solid #dc2626;
+  padding: 22px 24px 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  animation: ui-pop 0.15s ease-out;
+}
+.ui-dialog.info { border-top-color: #10b981; }
+.ui-dialog h3 {
+  font-size: 1.1rem;
+  color: #065f46;
+  margin: 0 0 8px;
+}
+.ui-dialog p {
+  font-size: 0.95rem;
+  color: #374151;
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+.ui-dialog .ui-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.ui-dialog button {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.ui-dialog .ui-cancel {
+  background: #fff;
+  color: #374151;
+  border-color: #d1d5db;
+}
+.ui-dialog .ui-cancel:hover { background: #f3f4f6; }
+.ui-dialog .ui-ok {
+  background: #dc2626;
+  color: #fff;
+}
+.ui-dialog .ui-ok:hover { background: #991b1b; }
+.ui-dialog.info .ui-ok { background: #10b981; }
+.ui-dialog.info .ui-ok:hover { background: #065f46; }
+
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-pop  { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
