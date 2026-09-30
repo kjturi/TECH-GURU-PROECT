@@ -217,38 +217,6 @@ export async function importSampleInventory(records) {
   return { added, skipped: records.length - added }
 }
 
-/** Live per-type counts for the device type hub. */
-export function useDeviceCounts() {
-  const [counts, setCounts] = useState({})
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (!isFirebaseConfigured) {
-      setLoading(false)
-      return
-    }
-    const unsubscribe = onSnapshot(
-      collection(db, DEVICES),
-      (snapshot) => {
-        const next = {}
-        snapshot.docs.forEach((d) => {
-          const t = d.data().type
-          next[t] = (next[t] || 0) + 1
-        })
-        setCounts(next)
-        setLoading(false)
-      },
-      (err) => {
-        console.error('[useDeviceCounts] snapshot error:', err)
-        setLoading(false)
-      }
-    )
-    return () => unsubscribe()
-  }, [])
-
-  return { counts, loading }
-}
-
 /** Live, unfiltered list of every device — used for value/brand analytics. */
 export function useAllDevices() {
   const [devices, setDevices] = useState([])
