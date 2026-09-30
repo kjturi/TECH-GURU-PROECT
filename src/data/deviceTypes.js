@@ -60,6 +60,23 @@ export function deviceDocId(type, identifier) {
   return `${type}__${String(identifier).trim().replace(/\//g, '-')}`
 }
 
+/**
+ * Where a unit is right now: issued to a named person (e.g. imported from
+ * the asset register), reserved against an asset request, or free stock.
+ * Only free stock is offered by the technician's automatic stock check.
+ */
+export function deviceStatus(device) {
+  if (device.issuedTo?.name) {
+    return { key: 'issued', label: `Issued to ${device.issuedTo.name}`, detail: device.issuedTo.businessUnit || '' }
+  }
+  if (device.assignedToRequestId) return { key: 'reserved', label: 'Reserved for a request', detail: '' }
+  return { key: 'in_stock', label: 'In stock', detail: '' }
+}
+
+export function isFreeStock(device) {
+  return deviceStatus(device).key === 'in_stock'
+}
+
 function normalize(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }

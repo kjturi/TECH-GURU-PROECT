@@ -3,6 +3,7 @@ import { useParams, Link, Navigate } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import DataState from '../../components/DataState.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
+import DeviceStatusCell from '../../components/DeviceStatusCell.jsx'
 import { useDevices } from '../../hooks/useDevices.js'
 import { deviceType } from '../../data/deviceTypes.js'
 
@@ -147,6 +148,7 @@ export default function DeviceTypePage() {
                 <th>Model</th>
                 <th>Price</th>
                 <th>PO Number</th>
+                <th>Issued to</th>
                 <th></th>
               </tr>
             </thead>
@@ -159,6 +161,7 @@ export default function DeviceTypePage() {
                   <td>{d.model || '—'}</td>
                   <td>{d.price != null ? `K${Number(d.price).toFixed(2)}` : '—'}</td>
                   <td>{d.poNumber || '—'}</td>
+                  <td><DeviceStatusCell device={d} /></td>
                   <td className="actions-cell">
                     <Link className="btn btn-secondary" to={`/admin/inventory/${type}/${encodeURIComponent(d.identifier)}/fat`} style={{ marginRight: 8 }}>
                       FAT

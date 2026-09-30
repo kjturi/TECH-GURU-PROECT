@@ -4,7 +4,7 @@ import DataState from '../../components/DataState.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
 import { useAllDevices, reserveDevice } from '../../hooks/useDevices.js'
-import { matchDeviceType, deviceType } from '../../data/deviceTypes.js'
+import { matchDeviceType, deviceType, isFreeStock } from '../../data/deviceTypes.js'
 import { STATUS } from '../../data/requestStatuses.js'
 
 const emptyAssetInfo = { assetTag: '', serialNumber: '', condition: 'New', notes: '' }
@@ -20,7 +20,7 @@ const emptyAssetInfo = { assetTag: '', serialNumber: '', condition: 'New', notes
 function classify(request, devices) {
   const matchedType = matchDeviceType(request.assetType)
   if (!matchedType) return { request, matchedType: null, available: [], hasStock: null }
-  const available = devices.filter((d) => d.type === matchedType && !d.assignedToRequestId)
+  const available = devices.filter((d) => d.type === matchedType && isFreeStock(d))
   return { request, matchedType, available, hasStock: available.length >= (Number(request.quantity) || 1) }
 }
 

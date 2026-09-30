@@ -1878,3 +1878,27 @@ table td.actions-cell {
   border-radius: 999px;
   padding: 2px 10px;
 }
+
+/* Inventory — issued-to column and sample import strip */
+.device-issued {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 0.85rem;
+  white-space: normal;
+  min-width: 180px;
+}
+.import-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}

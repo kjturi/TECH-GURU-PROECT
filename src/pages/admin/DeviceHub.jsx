@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import DataState from '../../components/DataState.jsx'
-import { useDeviceCounts, useAllDevices } from '../../hooks/useDevices.js'
+import { useDeviceCounts, useAllDevices, importSampleInventory } from '../../hooks/useDevices.js'
+import ConfirmDialog from '../../components/ConfirmDialog.jsx'
+import DeviceStatusCell from '../../components/DeviceStatusCell.jsx'
 import { useSimCards } from '../../hooks/useSimCards.js'
 import { DEVICE_TYPES, DEVICE_TYPE_KEYS, deviceType } from '../../data/deviceTypes.js'
 
@@ -19,13 +21,33 @@ export default function DeviceHub() {
   const { sims, loading: simsLoading } = useSimCards()
   const { devices, loading: devicesLoading } = useAllDevices()
   const [search, setSearch] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+
+  async function handleImport() {
+    setImporting(true)
+    setImportResult(null)
+    try {
+      // Loaded on demand so the sample rows aren't in the main bundle.
+      const { default: records } = await import('../../data/sampleInventory.json')
+      const { added, skipped } = await importSampleInventory(records)
+      setImportResult({ ok: true, text: `Imported ${added} device${added === 1 ? '' : 's'}${skipped ? ` (${skipped} already existed and were skipped)` : ''}.` })
+    } catch (err) {
+      console.error('[DeviceHub] sample import failed:', err)
+      setImportResult({ ok: false, text: 'Import failed — you may not have permission to add inventory.' })
+    } finally {
+      setImporting(false)
+      setImportOpen(false)
+    }
+  }
 
   const totalValue = devices.reduce((sum, d) => sum + (Number(d.price) || 0), 0)
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase()
     return devices.filter((d) =>
-      [d.identifier, d.serialNumber, d.brand, d.model, d.poNumber, deviceType(d.type)?.label]
+      [d.identifier, d.serialNumber, d.brand, d.model, d.poNumber, deviceType(d.type)?.label, d.issuedTo?.name, d.issuedTo?.businessUnit, d.issuedTo?.costCentre]
         .join(' ')
         .toLowerCase()
         .includes(term)
@@ -79,6 +101,14 @@ export default function DeviceHub() {
         </div>
       </div>
 
+      <div className="import-strip">
+        <span>Load the sample CUG phone and headset register (120 devices, all issued to staff).</span>
+        <button className="btn btn-secondary" onClick={() => setImportOpen(true)} disabled={importing}>
+          {importing ? 'Importing…' : 'Import sample inventory'}
+        </button>
+      </div>
+      {importResult && <p className={`state-msg${importResult.ok ? '' : ' error'}`} style={{ marginBottom: 16 }}>{importResult.text}</p>}
+
       <div className="panel">
         <h2>All Devices</h2>
         <DataState loading={devicesLoading} error={null} empty={!devicesLoading && filtered.length === 0}>
@@ -92,6 +122,7 @@ export default function DeviceHub() {
                   <th>Brand</th>
                   <th>Model</th>
                   <th>Unit Price</th>
+                  <th>Issued to</th>
                   <th></th>
                 </tr>
               </thead>
@@ -104,6 +135,7 @@ export default function DeviceHub() {
                     <td>{d.brand || '—'}</td>
                     <td>{d.model || '—'}</td>
                     <td>{d.price != null ? money(d.price) : '—'}</td>
+                    <td><DeviceStatusCell device={d} /></td>
                     <td className="actions-cell">
                       <Link className="btn btn-secondary" to={`/admin/inventory/${d.type}`}>Manage</Link>
                     </td>
@@ -114,6 +146,16 @@ export default function DeviceHub() {
           </div>
         </DataState>
       </div>
+
+      <ConfirmDialog
+        open={importOpen}
+        title="Import sample inventory?"
+        message="Adds 40 CUG phones and 80 headsets from the sample spreadsheets, each recorded as issued to the person listed. Devices that already exist are skipped."
+        confirmLabel="Import"
+        busy={importing}
+        onConfirm={handleImport}
+        onCancel={() => setImportOpen(false)}
+      />
     </>
   )
 }
