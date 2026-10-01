@@ -77,6 +77,17 @@ export function isFreeStock(device) {
   return deviceStatus(device).key === 'in_stock'
 }
 
+/**
+ * When a unit went out: the register's issue date, or when the requester
+ * collected it (units issued through an asset request). Sortable string
+ * (YYYY-MM-DD) or '' if unknown.
+ */
+export function deviceIssuedOn(device, request) {
+  if (device.issuedTo?.date) return device.issuedTo.date
+  const collected = request?.collectedAt?.toDate?.()
+  return collected ? collected.toISOString().slice(0, 10) : ''
+}
+
 function normalize(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }

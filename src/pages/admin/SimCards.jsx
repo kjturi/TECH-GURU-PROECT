@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
+import InventoryOverview from '../../components/InventoryOverview.jsx'
 import DataState from '../../components/DataState.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import { useSimCards } from '../../hooks/useSimCards.js'
@@ -83,6 +84,7 @@ export default function SimCards() {
     <>
       <Topbar title="CUG SIM Cards" search={search} onSearchChange={setSearch} searchPlaceholder="Search SIM cards..." />
       <p style={{ marginBottom: 16 }}><Link to="/admin/inventory">&larr; All device types</Link></p>
+      <InventoryOverview current="sims" />
 
       <div className="panel">
         <h2>{editingId ? 'Update SIM Card' : 'Add SIM Card'}</h2>

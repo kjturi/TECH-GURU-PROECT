@@ -4,12 +4,13 @@ import Topbar from '../../components/Topbar.jsx'
 import DataState from '../../components/DataState.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import DeviceStatusCell from '../../components/DeviceStatusCell.jsx'
-import StatusBadge from '../../components/StatusBadge.jsx'
+import ExportMenu from '../../components/ExportMenu.jsx'
+import { buildInventoryExport } from '../../utils/exportInventory.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useAllDevices, importSampleInventory } from '../../hooks/useDevices.js'
 import { useRequests } from '../../hooks/useRequests.js'
-import { useSimCards } from '../../hooks/useSimCards.js'
-import { DEVICE_TYPES, DEVICE_TYPE_KEYS, deviceType, isFreeStock } from '../../data/deviceTypes.js'
+import InventoryOverview from '../../components/InventoryOverview.jsx'
+import { deviceType, isFreeStock, deviceIssuedOn } from '../../data/deviceTypes.js'
 import { formatDate } from '../../data/requestStatuses.js'
 
 function money(n) {
@@ -21,14 +22,6 @@ const VIEWS = [
   { key: 'issued', label: 'Issued' },
 ]
 
-// When a unit went out: the register's issue date, or when the requester
-// collected it (for units issued through an asset request).
-function issuedDate(device, request) {
-  return device.issuedTo?.date
-    ? formatDate(device.issuedTo.date)
-    : formatDate(request?.collectedAt) || null
-}
-
 // Ported from GDPCapstone/partials/asset_hub.php (the type cards) and
 // dashboard.php (the Total Assets banner + combined table). The combined
 // table is split into two pages: free stock that can still be issued, and
@@ -36,7 +29,6 @@ function issuedDate(device, request) {
 // reserved/issued against an asset request).
 export default function DeviceHub() {
   const { user } = useAuth()
-  const { sims, loading: simsLoading } = useSimCards()
   const { devices, loading: devicesLoading } = useAllDevices()
   // Used only to name who a request-reserved unit is for; a viewer without
   // access to all requests just sees "Reserved for a request" instead.
@@ -68,12 +60,6 @@ export default function DeviceHub() {
   const requestById = useMemo(() => Object.fromEntries(requests.map((r) => [r.id, r])), [requests])
   const inStock = devices.filter(isFreeStock)
   const issued = devices.filter((d) => !isFreeStock(d))
-  const stockValue = inStock.reduce((sum, d) => sum + (Number(d.price) || 0), 0)
-  const totalValue = devices.reduce((sum, d) => sum + (Number(d.price) || 0), 0)
-
-  const countBy = (list) => list.reduce((acc, d) => ({ ...acc, [d.type]: (acc[d.type] || 0) + 1 }), {})
-  const stockByType = countBy(inStock)
-  const issuedByType = countBy(issued)
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -88,10 +74,14 @@ export default function DeviceHub() {
     })
     if (view !== 'issued') return matches
     // Most recently issued first.
-    const when = (d) => d.issuedTo?.date || (requestById[d.assignedToRequestId]?.collectedAt?.toDate?.().toISOString() ?? '')
-    return [...matches].sort((a, b) => String(when(b)).localeCompare(String(when(a))))
+    const when = (d) => deviceIssuedOn(d, requestById[d.assignedToRequestId])
+    return [...matches].sort((a, b) => when(b).localeCompare(when(a)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [devices, requestById, search, view])
+
+  const viewLabel = VIEWS.find((v) => v.key === view).label
+  const exportTitle = `Stock / Inventory — ${viewLabel}`
+  const exportFilename = `stock-inventory-${view === 'issued' ? 'issued' : 'in-stock'}-${new Date().toISOString().slice(0, 10)}`
 
   function switchView(next) {
     setSearch('')
@@ -107,52 +97,7 @@ export default function DeviceHub() {
         searchPlaceholder={view === 'issued' ? 'Search issued devices, people, BU…' : 'Search devices in stock…'}
       />
 
-      <div className="inventory-total-banner">
-        <div>
-          <h3>Total Assets</h3>
-          <p>{devicesLoading ? '…' : devices.length}</p>
-        </div>
-        <span>
-          {devicesLoading ? '…' : `${inStock.length} in stock (${money(stockValue)}) · ${issued.length} issued · Total value ${money(totalValue)}`}
-        </span>
-      </div>
-
-      <div className="cards">
-        {DEVICE_TYPE_KEYS.map((key) => {
-          const t = DEVICE_TYPES[key]
-          return (
-            <div className="card device-type-card" key={key}>
-              <div className="device-type-head">
-                <span className="device-type-icon">{t.icon}</span>
-                <div>
-                  <h3 style={{ marginBottom: 2 }}>{t.plural}</h3>
-                  <span className="badge">
-                    {devicesLoading ? '…' : `${stockByType[key] || 0} in stock · ${issuedByType[key] || 0} issued`}
-                  </span>
-                </div>
-              </div>
-              <p className="device-type-desc">{t.description} Identified by {t.keyLabel}.</p>
-              <Link className="btn btn-primary" to={`/admin/inventory/${key}`}>
-                Manage
-              </Link>
-            </div>
-          )
-        })}
-
-        <div className="card device-type-card">
-          <div className="device-type-head">
-            <span className="device-type-icon">SIM</span>
-            <div>
-              <h3 style={{ marginBottom: 2 }}>CUG SIM Cards</h3>
-              <span className="badge">{simsLoading ? '…' : `${sims.length} recorded`}</span>
-            </div>
-          </div>
-          <p className="device-type-desc">CUG SIM cards, optionally linked to a CUG Mobile by IMEI. Identified by SPID.</p>
-          <Link className="btn btn-primary" to="/admin/sim-cards">
-            Manage
-          </Link>
-        </div>
-      </div>
+      <InventoryOverview />
 
       <div className="import-strip">
         <span>Load the sample CUG phone and headset register (120 devices, all issued to staff).</span>
@@ -174,6 +119,12 @@ export default function DeviceHub() {
             {v.label} <span className="count-pill">{devicesLoading ? '…' : (v.key === 'issued' ? issued : inStock).length}</span>
           </button>
         ))}
+        <ExportMenu
+          data={buildInventoryExport(rows, view, requestById)}
+          filename={exportFilename}
+          title={exportTitle}
+          disabled={devicesLoading}
+        />
       </div>
 
       <div className="panel">
@@ -248,18 +199,8 @@ export default function DeviceHub() {
                               <div className="muted" style={{ fontSize: '0.8rem' }}>{d.serialNumber}</div>
                             )}
                           </td>
-                          <td>
-                            {!d.issuedTo?.name && req ? (
-                              <div className="device-issued">
-                                <strong>{req.requesterName}</strong>
-                                <span className="muted">{[req.rid, req.department].filter(Boolean).join(' · ')}</span>
-                                <span><StatusBadge status={req.status} /></span>
-                              </div>
-                            ) : (
-                              <DeviceStatusCell device={d} />
-                            )}
-                          </td>
-                          <td>{issuedDate(d, req) || '—'}</td>
+                          <td><DeviceStatusCell device={d} request={req} /></td>
+                          <td>{formatDate(deviceIssuedOn(d, req)) || '—'}</td>
                           <td className="actions-cell">
                             <Link className="btn btn-secondary" to={`/admin/inventory/${d.type}/${encodeURIComponent(d.identifier)}/fat`} style={{ marginRight: 6 }}>
                               FAT
