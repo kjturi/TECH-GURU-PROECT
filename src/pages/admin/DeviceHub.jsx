@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import DataState from '../../components/DataState.jsx'
-import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import DeviceStatusCell from '../../components/DeviceStatusCell.jsx'
 import ExportMenu from '../../components/ExportMenu.jsx'
+import ImportDialog from '../../components/ImportDialog.jsx'
 import { buildInventoryExport } from '../../utils/exportInventory.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import { useAllDevices, importSampleInventory } from '../../hooks/useDevices.js'
+import { useAllDevices } from '../../hooks/useDevices.js'
 import { useRequests } from '../../hooks/useRequests.js'
 import InventoryOverview from '../../components/InventoryOverview.jsx'
 import { deviceType, isFreeStock, deviceIssuedOn } from '../../data/deviceTypes.js'
@@ -36,27 +36,6 @@ export default function DeviceHub() {
   const [searchParams, setSearchParams] = useSearchParams()
   const view = searchParams.get('view') === 'issued' ? 'issued' : 'stock'
   const [search, setSearch] = useState('')
-  const [importOpen, setImportOpen] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState(null)
-
-  async function handleImport() {
-    setImporting(true)
-    setImportResult(null)
-    try {
-      // Loaded on demand so the sample rows aren't in the main bundle.
-      const { default: records } = await import('../../data/sampleInventory.json')
-      const { added, skipped } = await importSampleInventory(records)
-      setImportResult({ ok: true, text: `Imported ${added} device${added === 1 ? '' : 's'}${skipped ? ` (${skipped} already existed and were skipped)` : ''}.` })
-    } catch (err) {
-      console.error('[DeviceHub] sample import failed:', err)
-      setImportResult({ ok: false, text: 'Import failed — you may not have permission to add inventory.' })
-    } finally {
-      setImporting(false)
-      setImportOpen(false)
-    }
-  }
-
   const requestById = useMemo(() => Object.fromEntries(requests.map((r) => [r.id, r])), [requests])
   const inStock = devices.filter(isFreeStock)
   const issued = devices.filter((d) => !isFreeStock(d))
@@ -99,14 +78,6 @@ export default function DeviceHub() {
 
       <InventoryOverview />
 
-      <div className="import-strip">
-        <span>Load the sample CUG phone and headset register (120 devices, all issued to staff).</span>
-        <button className="btn btn-secondary" onClick={() => setImportOpen(true)} disabled={importing}>
-          {importing ? 'Importing…' : 'Import sample inventory'}
-        </button>
-      </div>
-      {importResult && <p className={`state-msg${importResult.ok ? '' : ' error'}`} style={{ marginBottom: 16 }}>{importResult.text}</p>}
-
       <div className="org-tabs" role="tablist">
         {VIEWS.map((v) => (
           <button
@@ -119,12 +90,28 @@ export default function DeviceHub() {
             {v.label} <span className="count-pill">{devicesLoading ? '…' : (v.key === 'issued' ? issued : inStock).length}</span>
           </button>
         ))}
-        <ExportMenu
-          data={buildInventoryExport(rows, view, requestById)}
-          filename={exportFilename}
-          title={exportTitle}
-          disabled={devicesLoading}
-        />
+        <div className="inventory-actions">
+          <ImportDialog />
+          <ExportMenu
+            disabled={devicesLoading}
+            options={[
+              {
+                key: 'view',
+                label: `${viewLabel} tab${search.trim() ? ' (search results)' : ''}`,
+                data: buildInventoryExport(rows, view, requestById),
+                filename: exportFilename,
+                title: exportTitle,
+              },
+              {
+                key: 'all',
+                label: 'All — in stock and issued',
+                data: buildInventoryExport(devices, 'all', requestById),
+                filename: exportFilename.replace(/-(in-stock|issued)-/, '-all-'),
+                title: exportTitle.replace(/ — .*$/, ' — All'),
+              },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="panel">
@@ -218,15 +205,6 @@ export default function DeviceHub() {
         )}
       </div>
 
-      <ConfirmDialog
-        open={importOpen}
-        title="Import sample inventory?"
-        message="Adds 40 CUG phones and 80 headsets from the sample spreadsheets, each recorded as issued to the person listed. Devices that already exist are skipped."
-        confirmLabel="Import"
-        busy={importing}
-        onConfirm={handleImport}
-        onCancel={() => setImportOpen(false)}
-      />
     </>
   )
 }

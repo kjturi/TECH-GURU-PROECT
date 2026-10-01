@@ -10,7 +10,6 @@ import {
   deleteDoc,
   updateDoc,
   runTransaction,
-  writeBatch,
   serverTimestamp,
 } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../firebase'
@@ -161,60 +160,6 @@ export function useDevices(type) {
  */
 export async function reserveDevice(deviceId, requestId) {
   await updateDoc(doc(db, DEVICES, deviceId), { assignedToRequestId: requestId })
-}
-
-/**
- * One-off import of the sample inventory spreadsheets (converted to
- * src/data/sampleInventory.json). Skips any device or PO that already
- * exists, so running it twice is harmless. Every sample device is already
- * issued to someone (`issuedTo`), so none of them count as free stock.
- */
-export async function importSampleInventory(records) {
-  const [deviceSnap, poSnap] = await Promise.all([
-    getDocs(collection(db, DEVICES)),
-    getDocs(collection(db, PURCHASE_ORDERS)),
-  ])
-  const existingDevices = new Set(deviceSnap.docs.map((d) => d.id))
-  const existingPOs = new Set(poSnap.docs.map((d) => d.id))
-
-  let batch = writeBatch(db)
-  let ops = 0
-  let added = 0
-  const commits = []
-  const queue = (fn) => {
-    fn(batch)
-    ops += 1
-    if (ops >= 450) {
-      commits.push(batch.commit())
-      batch = writeBatch(db)
-      ops = 0
-    }
-  }
-
-  for (const rec of records) {
-    const id = deviceDocId(rec.type, rec.identifier)
-    if (existingDevices.has(id)) continue
-    existingDevices.add(id)
-    const { invoice, source, ...fields } = rec
-    queue((b) =>
-      b.set(doc(db, DEVICES, id), {
-        ...fields,
-        assignedToRequestId: null,
-        sample: true,
-        importedFrom: source || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-    )
-    added += 1
-    if (rec.poNumber && !existingPOs.has(rec.poNumber)) {
-      existingPOs.add(rec.poNumber)
-      queue((b) => b.set(doc(db, PURCHASE_ORDERS, rec.poNumber), { invoiceNumber: invoice || null }))
-    }
-  }
-  if (ops > 0) commits.push(batch.commit())
-  await Promise.all(commits)
-  return { added, skipped: records.length - added }
 }
 
 /** Live, unfiltered list of every device — used for value/brand analytics. */

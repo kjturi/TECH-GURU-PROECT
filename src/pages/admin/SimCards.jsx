@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar.jsx'
 import InventoryOverview from '../../components/InventoryOverview.jsx'
 import DataState from '../../components/DataState.jsx'
+import ImportDialog from '../../components/ImportDialog.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import { useSimCards } from '../../hooks/useSimCards.js'
 
@@ -113,6 +114,10 @@ export default function SimCards() {
             </button>
           </div>
         </form>
+      </div>
+
+      <div className="inventory-actions" style={{ marginBottom: 12 }}>
+        <ImportDialog kind="sims" />
       </div>
 
       <DataState loading={loading} error={error} empty={!loading && !error && filtered.length === 0}>

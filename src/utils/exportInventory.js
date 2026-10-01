@@ -1,8 +1,9 @@
 import { deviceType, deviceStatus, deviceIssuedOn } from '../data/deviceTypes.js'
-import { formatDate } from '../data/requestStatuses.js'
+import { STATUS, formatDate } from '../data/requestStatuses.js'
 
-// Stock / Inventory exports (Excel, CSV, PDF) of whatever list is on screen
-// — the In Stock or Issued tab, after search. The Excel and PDF libraries
+// Stock / Inventory exports (Excel, CSV, PDF): either the list on screen
+// (In Stock or Issued tab, after search) or every device in scope, both
+// in stock and issued ('all'). The Excel and PDF libraries
 // are loaded only when someone actually exports, so they don't weigh down
 // the app for everyone else.
 
@@ -31,13 +32,27 @@ const ISSUED_COLUMNS = [
   { key: 'poNumber', header: 'PO Number', width: 12 },
 ]
 
-/** Columns + plain-value rows for the given tab. */
+const ALL_COLUMNS = [
+  ...STOCK_COLUMNS.slice(0, 5),
+  { key: 'status', header: 'Status', width: 12 },
+  ...ISSUED_COLUMNS.slice(4),
+]
+
+// "Reserved" units issued through a request count as Issued once collected.
+function stockStatus(status, req) {
+  if (status.key === 'in_stock') return 'In stock'
+  if (status.key === 'issued') return 'Issued'
+  return req && [STATUS.COLLECTED, STATUS.CLOSED].includes(req.status) ? 'Issued' : 'Reserved'
+}
+
+/** Columns + plain-value rows for 'stock', 'issued' or 'all'. */
 export function buildInventoryExport(devices, view, requestById = {}) {
-  const columns = view === 'issued' ? ISSUED_COLUMNS : STOCK_COLUMNS
+  const columns = view === 'all' ? ALL_COLUMNS : view === 'issued' ? ISSUED_COLUMNS : STOCK_COLUMNS
   const rows = devices.map((d) => {
     const req = requestById[d.assignedToRequestId]
     const status = deviceStatus(d)
     return {
+      status: stockStatus(status, req),
       type: deviceType(d.type)?.label || d.type,
       identifier: d.identifier || '',
       serialNumber: d.serialNumber && d.serialNumber !== d.identifier ? d.serialNumber : '',

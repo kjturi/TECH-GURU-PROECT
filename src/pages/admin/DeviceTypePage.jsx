@@ -5,6 +5,7 @@ import DataState from '../../components/DataState.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import DeviceStatusCell from '../../components/DeviceStatusCell.jsx'
 import ExportMenu from '../../components/ExportMenu.jsx'
+import ImportDialog from '../../components/ImportDialog.jsx'
 import InventoryOverview from '../../components/InventoryOverview.jsx'
 import { buildInventoryExport } from '../../utils/exportInventory.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
@@ -198,12 +199,28 @@ export default function DeviceTypePage() {
             {v.label} <span className="count-pill">{loading ? '…' : (v.key === 'issued' ? issued : inStock).length}</span>
           </button>
         ))}
-        <ExportMenu
-          data={buildInventoryExport(filtered, view, requestById)}
-          filename={exportFilename}
-          title={exportTitle}
-          disabled={loading}
-        />
+        <div className="inventory-actions">
+          <ImportDialog type={type} />
+          <ExportMenu
+            disabled={loading}
+            options={[
+              {
+                key: 'view',
+                label: `${viewLabel} tab${search.trim() ? ' (search results)' : ''}`,
+                data: buildInventoryExport(filtered, view, requestById),
+                filename: exportFilename,
+                title: exportTitle,
+              },
+              {
+                key: 'all',
+                label: 'All — in stock and issued',
+                data: buildInventoryExport(devices, 'all', requestById),
+                filename: exportFilename.replace(/-(in-stock|issued)-/, '-all-'),
+                title: exportTitle.replace(/ — .*$/, ' — All'),
+              },
+            ]}
+          />
+        </div>
       </div>
 
       <DataState loading={loading} error={error} empty={!loading && !error && filtered.length === 0}>

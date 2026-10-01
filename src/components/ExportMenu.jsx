@@ -8,10 +8,11 @@ const FORMATS = [
 ]
 
 /**
- * "Export ▾" button with Excel / CSV / PDF options. `data` is
- * { columns, rows } (see buildInventoryExport); `filename` has no extension.
+ * "Export ▾" button with Excel / CSV / PDF options for each scope in
+ * `options`: [{ key, label, data: { columns, rows }, filename, title }]
+ * (see buildInventoryExport); `filename` has no extension.
  */
-export default function ExportMenu({ data, filename, title, disabled }) {
+export default function ExportMenu({ options, disabled }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState(null)
@@ -29,7 +30,8 @@ export default function ExportMenu({ data, filename, title, disabled }) {
     }
   }, [open])
 
-  async function run(format) {
+  async function run(option, format) {
+    const { data, filename, title } = option
     setOpen(false)
     setBusy(format)
     setError(null)
@@ -45,7 +47,7 @@ export default function ExportMenu({ data, filename, title, disabled }) {
     }
   }
 
-  const empty = !data.rows.length
+  const empty = options.every((o) => !o.data.rows.length)
   return (
     <div className="export-menu" ref={ref}>
       <button
@@ -54,19 +56,32 @@ export default function ExportMenu({ data, filename, title, disabled }) {
         aria-haspopup="true"
         aria-expanded={open}
         disabled={disabled || empty || !!busy}
-        title={empty ? 'Nothing to export in this view' : undefined}
+        title={empty ? 'Nothing to export' : undefined}
         onClick={() => setOpen((o) => !o)}
       >
         {busy ? 'Exporting…' : 'Export ▾'}
       </button>
       {open && (
         <ul className="export-menu-list" role="menu">
-          {FORMATS.map((f) => (
-            <li key={f.key}>
-              <button type="button" role="menuitem" onClick={() => run(f.key)}>{f.label}</button>
+          {options.map((o) => (
+            <li key={o.key} className="export-menu-group">
+              <div className="export-menu-heading">
+                {o.label}
+                <span>{o.data.rows.length} row{o.data.rows.length === 1 ? '' : 's'}</span>
+              </div>
+              {FORMATS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  role="menuitem"
+                  disabled={!o.data.rows.length}
+                  onClick={() => run(o, f.key)}
+                >
+                  {f.label}
+                </button>
+              ))}
             </li>
           ))}
-          <li className="export-menu-note">{data.rows.length} row{data.rows.length === 1 ? '' : 's'} from this view</li>
         </ul>
       )}
       {error && <span className="export-menu-error">{error}</span>}
