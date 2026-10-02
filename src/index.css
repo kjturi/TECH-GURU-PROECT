@@ -1897,33 +1897,6 @@ table td.actions-cell {
   align-items: center;
   gap: 8px;
 }
-.export-menu-list {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 25;
-  list-style: none;
-  min-width: 190px;
-  background: #fff;
-  border: 1px solid var(--accent-light);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
-  padding: 6px;
-}
-.export-menu-list button {
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  padding: 9px 12px;
-  border-radius: 7px;
-  font: inherit;
-  font-size: 0.92rem;
-  cursor: pointer;
-}
-.export-menu-list button:hover {
-  background: var(--accent-light);
-}
 .export-menu-error {
   font-size: 0.82rem;
   color: #b91c1c;
@@ -2020,34 +1993,103 @@ table td.actions-cell {
   gap: 2px;
 }
 
-/* Export menu — one group per scope (this tab / all) */
-.export-menu-list {
-  min-width: 240px;
+
+/* Export panel — one card per scope (this tab / all), formats as buttons */
+.export-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 25;
+  width: 330px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
 }
-.export-menu-group + .export-menu-group {
-  border-top: 1px solid var(--accent-light);
-  margin-top: 4px;
-  padding-top: 4px;
+.export-panel-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  padding: 2px 4px 0;
 }
-.export-menu-heading {
+.export-scope {
+  border: 1px solid var(--accent-light);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfefc;
+}
+.export-scope.empty {
+  opacity: 0.6;
+}
+.export-scope-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent-dark);
-  padding: 8px 12px 4px;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
 }
-.export-menu-heading span {
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
+.export-scope-head h4 {
+  font-size: 0.95rem;
+  color: var(--navy-800);
+}
+.export-scope-head p {
+  font-size: 0.8rem;
   color: #6b7280;
+  margin-top: 2px;
+  line-height: 1.35;
 }
-.export-menu-list button:disabled {
-  color: #9ca3af;
+.export-count {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+  background: var(--accent-light);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.export-formats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.export-format {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  color: #374151;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.export-format:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.18);
+  transform: translateY(-1px);
+}
+.export-format:disabled {
   cursor: not-allowed;
-  background: none;
 }
+.export-tag {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.export-tag-xlsx { background: #16a34a; }
+.export-tag-csv { background: #2563eb; }
+.export-tag-pdf { background: #dc2626; }

@@ -97,14 +97,16 @@ export default function DeviceHub() {
             options={[
               {
                 key: 'view',
-                label: `${viewLabel} tab${search.trim() ? ' (search results)' : ''}`,
+                label: `${viewLabel} tab`,
+                description: search.trim() ? `Search results for “${search.trim()}”` : 'Exactly what’s on screen now',
                 data: buildInventoryExport(rows, view, requestById),
                 filename: exportFilename,
                 title: exportTitle,
               },
               {
                 key: 'all',
-                label: 'All — in stock and issued',
+                label: 'All devices',
+                description: 'In stock and issued, with a Status column',
                 data: buildInventoryExport(devices, 'all', requestById),
                 filename: exportFilename.replace(/-(in-stock|issued)-/, '-all-'),
                 title: exportTitle.replace(/ — .*$/, ' — All'),
