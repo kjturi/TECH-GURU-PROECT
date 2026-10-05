@@ -42,6 +42,18 @@ export function effectivePackageId(profile) {
   return profile?.jobRole || DEFAULT_PACKAGE_ID
 }
 
+/**
+ * The package that applies to this profile. If the default Requester
+ * package hasn't been created yet, built-in defaults apply (request assets;
+ * CUG Prepaid, CUG Postpaid, Dongle) — mirrors packageData() in
+ * firestore.rules — so new accounts can request with no admin setup.
+ */
+export function resolvePackage(packages, profile) {
+  const id = effectivePackageId(profile)
+  if (packages[id]) return packages[id]
+  return id === DEFAULT_PACKAGE_ID ? { id, builtIn: true, ...defaultPackage(id) } : null
+}
+
 /** Every package an admin can configure: one per job role, plus the default. */
 export const PACKAGE_ROLES = [...JOB_ROLES, { key: DEFAULT_PACKAGE_ID, label: DEFAULT_PACKAGE_LABEL }]
 
@@ -90,7 +102,7 @@ export function packageAllows(pkg, permission) {
  */
 export function packageAccess(profile, packages, permission) {
   const packageId = effectivePackageId(profile)
-  const pkg = packages[packageId]
+  const pkg = resolvePackage(packages, profile)
   if (!pkg) {
     const which = packageId === DEFAULT_PACKAGE_ID ? 'default Requester' : JOB_ROLE_LABELS[packageId] || packageId
     return {

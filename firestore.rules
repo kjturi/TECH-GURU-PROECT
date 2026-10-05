@@ -66,12 +66,21 @@ service cloud.firestore {
       return role is string ? role : 'requester';
     }
 
-    // True only if `uid`'s package exists and grants `perm`. A package
-    // that hasn't been configured means no access.
+    // A package's settings. If the default "requester" package hasn't been
+    // created yet, built-in defaults apply so new accounts can request
+    // straight away (mirrors DEFAULT_REQUESTER_PACKAGE in jobRoles.js). Any
+    // other package that hasn't been configured grants nothing.
+    function packageData(pkg) {
+      return exists(/databases/$(database)/documents/packages/$(pkg))
+        ? get(/databases/$(database)/documents/packages/$(pkg)).data
+        : (pkg == 'requester'
+            ? { 'permissions': ['submit_requests'], 'requestOptions': ['cug_prepaid', 'cug_postpaid', 'dongle'], 'postpaidPlan': null }
+            : { 'permissions': [], 'requestOptions': [], 'postpaidPlan': null });
+    }
+
+    // True only if `uid`'s package grants `perm`.
     function packageGrants(uid, perm) {
-      let pkg = packageIdOf(uid);
-      return exists(/databases/$(database)/documents/packages/$(pkg)) &&
-        perm in get(/databases/$(database)/documents/packages/$(pkg)).data.get('permissions', []);
+      return perm in packageData(packageIdOf(uid)).get('permissions', []);
     }
 
     // Team Leaders, Managers, Senior Managers and HODs may approve ANY
@@ -92,10 +101,9 @@ service cloud.firestore {
     }
 
     // --- Request packages (mirrors src/data/requestPackages.js) ---------
-    // The requester's package. Only call after packageGrants() has
-    // confirmed it exists.
+    // The requester's package (or the built-in Requester defaults).
     function myRolePackage() {
-      return get(/databases/$(database)/documents/packages/$(packageIdOf(request.auth.uid))).data;
+      return packageData(packageIdOf(request.auth.uid));
     }
 
     // A CUG / Dongle request must be one the requester's role package

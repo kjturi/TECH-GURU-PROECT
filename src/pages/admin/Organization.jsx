@@ -86,6 +86,7 @@ function PackageCard({ role, pkg, isOwnRole, planKeys, onSave }) {
       {role.key === DEFAULT_PACKAGE_ID && (
         <p className="org-note" style={{ marginTop: 0, marginBottom: 10 }}>
           Applies to everyone without a job role yet, including every new account, so they can request straight away.
+          {!pkg && ' Until it’s created, built-in defaults apply: request assets, CUG Prepaid, CUG Postpaid and Dongle.'}
         </p>
       )}
 

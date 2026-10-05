@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import TopNavUser from './TopNavUser.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { usePackages } from '../hooks/useOrg.js'
-import { PACKAGE_PERMISSIONS, packageAllows, effectivePackageId, canApproveAnyRequest } from '../data/jobRoles.js'
+import { PACKAGE_PERMISSIONS, packageAllows, resolvePackage, canApproveAnyRequest } from '../data/jobRoles.js'
 import bspLogo from '../assets/bsp-logo.jpg'
 
 // Requesters get a simple top bar — three destinations, plus Approvals for
@@ -20,7 +20,7 @@ export default function RequesterLayout() {
   const { packages } = usePackages()
   const canApprove =
     canApproveAnyRequest(profile) ||
-    packageAllows(packages[effectivePackageId(profile)], PACKAGE_PERMISSIONS.APPROVE_REQUESTS)
+    packageAllows(resolvePackage(packages, profile), PACKAGE_PERMISSIONS.APPROVE_REQUESTS)
   const links = canApprove
     ? [...REQUESTER_LINKS, { to: '/requester/approvals', label: 'Approvals' }]
     : REQUESTER_LINKS

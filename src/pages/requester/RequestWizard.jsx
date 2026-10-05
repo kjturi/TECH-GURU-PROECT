@@ -18,7 +18,7 @@ import {
   jobRoleRank,
   packageAccess,
   packageAllows,
-  effectivePackageId,
+  resolvePackage,
   pickApprovers,
   approverCandidates,
 } from '../../data/jobRoles.js'
@@ -224,7 +224,7 @@ export default function RequestWizard() {
   // Request packages (CUG Prepaid / Postpaid, Dongle) this person's role is
   // eligible for. Postpaid also needs a plan on their role package.
   const { plans: cugPlans } = useCugPlans()
-  const myPackage = packages[effectivePackageId(profile)]
+  const myPackage = resolvePackage(packages, profile)
   const myPlan = myPackage?.postpaidPlan || null
   // BSP packages the admin has put in this person's plan (CUG Plans tab).
   const myBspPackages = planPackages(cugPlans, myPlan)
