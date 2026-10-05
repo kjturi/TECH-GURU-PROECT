@@ -619,7 +619,7 @@ function PeopleTab({ myUid }) {
   if (error) return <p className="state-msg error">Could not load people: {error}</p>
 
   const q = search.trim().toLowerCase()
-  const shown = users.filter((u) => !q || `${u.name} ${u.email}`.toLowerCase().includes(q))
+  const shown = users.filter((u) => u.status !== 'deleted' && (!q || `${u.name} ${u.email}`.toLowerCase().includes(q)))
 
   return (
     <>

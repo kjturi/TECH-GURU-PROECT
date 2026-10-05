@@ -56,7 +56,16 @@ function PermissionBadges({ user }) {
 // with the matching restriction re-enforced server-side in firestore.rules.
 export default function UserManagement() {
   const { user: currentUser, profile } = useAuth()
-  const { users, loading, error, setRole } = useUsers(true)
+  const { users: allUsers, loading, error, setRole, deleteAccount, restoreAccount } = useUsers(true)
+  const [showDeleted, setShowDeleted] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [confirmText, setConfirmText] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const isDeleted = (u) => u.status === 'deleted'
+  const deletedCount = allUsers.filter(isDeleted).length
+  const users = allUsers.filter((u) => (showDeleted ? isDeleted(u) : !isDeleted(u)))
   const [dialog, setDialog] = useState(null) // { user, role, permissions, job: { jobRole, buId, teamId } }
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -104,6 +113,32 @@ export default function UserManagement() {
     }))
   }
 
+  async function handleDelete() {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await deleteAccount(deleteTarget, profile?.name || currentUser.email)
+      setNotice(`Deleted ${deleteTarget.name || deleteTarget.email}. They can no longer use the app. To remove their sign-in completely, delete ${deleteTarget.email} in Firebase Console → Authentication → Users.`)
+      setDeleteTarget(null)
+    } catch (err) {
+      console.error('[UserManagement] delete failed:', err)
+      setDeleteError('Could not delete this account. You may not have permission.')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  async function handleRestore(u) {
+    setNotice(null)
+    try {
+      await restoreAccount(u)
+      setNotice(`Restored ${u.name || u.email} as a Requester. Give them a job role again if needed.`)
+    } catch (err) {
+      console.error('[UserManagement] restore failed:', err)
+      setNotice('Could not restore this account. You may not have permission.')
+    }
+  }
+
   async function handleConfirm() {
     setBusy(true)
     setSaveError(null)
@@ -148,6 +183,16 @@ export default function UserManagement() {
           Technician Admin back to requester. Other accounts aren't shown here.
         </p>
       )}
+      {canManageAll && (
+        <div className="um-toolbar">
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={showDeleted} onChange={(e) => setShowDeleted(e.target.checked)} />
+            Show deleted accounts ({deletedCount})
+          </label>
+        </div>
+      )}
+      {notice && <p className="state-msg" style={{ marginBottom: 12 }}>{notice}</p>}
+
       <DataState loading={loading} error={error} empty={!loading && !error && visibleUsers.length === 0}>
         <div className="table-wrap">
           <table>
@@ -180,10 +225,24 @@ export default function UserManagement() {
                   <td className="actions-cell">
                     {u.id === currentUser.uid ? (
                       <span className="badge">You</span>
-                    ) : (
-                      <button className="btn btn-secondary" onClick={() => openChangeRole(u)}>
-                        Edit Roles
+                    ) : isDeleted(u) ? (
+                      <button className="btn btn-secondary" onClick={() => handleRestore(u)}>
+                        Restore
                       </button>
+                    ) : (
+                      <>
+                        <button className="btn btn-secondary" onClick={() => openChangeRole(u)} style={{ marginRight: 6 }}>
+                          Edit Roles
+                        </button>
+                        {canManageAll && (
+                          <button
+                            className="btn btn-danger"
+                            onClick={() => { setDeleteTarget(u); setConfirmText(''); setDeleteError(null) }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
@@ -280,6 +339,29 @@ export default function UserManagement() {
             {saveError && <p className="state-msg error">{saveError}</p>}
           </div>
         )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={deleteTarget ? `Delete ${deleteTarget.name || deleteTarget.email}?` : ''}
+        message="They'll lose access to the app immediately: every role, permission, job role and team is removed, and they disappear from user and approver lists. Their past requests are kept. You can restore the account later."
+        confirmLabel="Delete account"
+        danger
+        busy={deleteBusy}
+        onConfirm={() => {
+          if (confirmText.trim().toLowerCase() !== 'delete') {
+            setDeleteError('Type DELETE to confirm.')
+            return
+          }
+          handleDelete()
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      >
+        <label className="um-delete-confirm">
+          Type <strong>DELETE</strong> to confirm
+          <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoFocus />
+        </label>
+        {deleteError && <p className="state-msg error">{deleteError}</p>}
       </ConfirmDialog>
     </>
   )

@@ -7,9 +7,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // False for an account an admin has deleted (users/{uid}.status ==
+    // 'deleted'). Every role/package check below goes through this, so a
+    // deleted account loses all access even while its sign-in still exists.
+    function isActiveUser(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.get('status', 'active') != 'deleted';
+    }
+
     function isAdmin() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        isActiveUser(request.auth.uid) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
@@ -17,7 +25,7 @@ service cloud.firestore {
     // shell at all. Mirrors STAFF_ROLES in src/data/adminPermissions.js.
     function isStaff() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        isActiveUser(request.auth.uid) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'technician_admin', 'inventory_admin'];
     }
 
@@ -80,24 +88,24 @@ service cloud.firestore {
 
     // True only if `uid`'s package grants `perm`.
     function packageGrants(uid, perm) {
-      return perm in packageData(packageIdOf(uid)).get('permissions', []);
+      return isActiveUser(uid) && perm in packageData(packageIdOf(uid)).get('permissions', []);
     }
 
     // Team Leaders, Managers, Senior Managers and HODs may approve ANY
     // request at Level 1 or Level 2, not only ones naming them. Mirrors
     // ANY_REQUEST_APPROVER_ROLES in jobRoles.js.
     function canApproveAnyRequest() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null)
-        in ['team_leader', 'manager', 'senior_manager', 'hod'];
+      return isActiveUser(request.auth.uid) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null)
+          in ['team_leader', 'manager', 'senior_manager', 'hod'];
     }
 
     // Who a new request may name as its Level 1 / Level 2 approver: Team
     // Leaders, Managers, Senior Managers and HODs only (the same list the
     // request form shows). Mirrors approverCandidates() in jobRoles.js.
     function canBeApprover(uid) {
-      let profilePath = /databases/$(database)/documents/users/$(uid);
-      return exists(profilePath) &&
-        get(profilePath).data.get('jobRole', null) in ['team_leader', 'manager', 'senior_manager', 'hod'];
+      return isActiveUser(uid) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.get('jobRole', null) in ['team_leader', 'manager', 'senior_manager', 'hod'];
     }
 
     // --- Request packages (mirrors src/data/requestPackages.js) ---------
@@ -177,6 +185,7 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
         request.auth.uid == userId &&
         request.resource.data.role == 'requester' &&
+        request.resource.data.get('status', 'active') == 'active' &&
         !('jobRole' in request.resource.data) &&
         !('packageId' in request.resource.data) &&
         !('buId' in request.resource.data) &&
@@ -192,15 +201,19 @@ service cloud.firestore {
           request.auth.uid == userId &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.get('permissions', null) == resource.data.get('permissions', null) &&
-          jobAssignmentUnchanged()
+          jobAssignmentUnchanged() &&
+          fieldUnchanged('status') &&
+          resource.data.get('status', 'active') != 'deleted'
         ) ||
         // Full user management — including job role/package/team, which
         // must stay consistent (validJobAssignment) and can never be
         // changed on the admin's own profile.
+        // Deleting (status 'deleted') or restoring an account is also done
+        // here — but never on the admin's own account.
         (
           hasPermission('manage_users') &&
           validJobAssignment() &&
-          (request.auth.uid != userId || jobAssignmentUnchanged())
+          (request.auth.uid != userId || (jobAssignmentUnchanged() && fieldUnchanged('status')))
         ) ||
         // Inventory Admin's scoped provisioning right: may flip a user
         // between "requester" and "technician_admin" ONLY (an existing
@@ -213,6 +226,7 @@ service cloud.firestore {
           hasPermission('provision_technicians') &&
           request.auth.uid != userId &&
           jobAssignmentUnchanged() &&
+          fieldUnchanged('status') &&
           resource.data.role in ['requester', 'technician_admin'] &&
           request.resource.data.role in ['requester', 'technician_admin'] &&
           (

@@ -1,4 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom'
+import DeletedAccount from './DeletedAccount.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
 const HOME_BY_ROLE = {
@@ -37,6 +38,10 @@ export default function ProtectedRoute({ role, children }) {
         Your account has no profile on record. Contact an administrator.
       </div>
     )
+  }
+
+  if (profile?.status === 'deleted') {
+    return <DeletedAccount />
   }
 
   if (profile === null) {

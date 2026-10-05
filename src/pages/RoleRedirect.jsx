@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom'
+import DeletedAccount from '../components/DeletedAccount.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { HOME_BY_ROLE } from '../components/ProtectedRoute.jsx'
 
@@ -20,6 +21,10 @@ export default function RoleRedirect() {
       </div>
     )
   }
+  if (profile?.status === 'deleted') {
+    return <DeletedAccount />
+  }
+
   if (profile === null) {
     return <div className="state-msg">Loading your profile…</div>
   }

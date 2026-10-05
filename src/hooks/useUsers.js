@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { collection, onSnapshot, orderBy, query, doc, updateDoc } from 'firebase/firestore'
+import { collection, onSnapshot, orderBy, query, doc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../firebase'
 
 /** Admin-only: live list of every users/{uid} profile, plus a role-change action. */
@@ -42,5 +42,35 @@ export function useUsers(enabled) {
     await updateDoc(doc(db, 'users', userId), { permissions })
   }, [])
 
-  return { users, loading, error, setRole, setPermissions }
+  /**
+   * Deletes an account from the app: marks the profile 'deleted' (kept as a
+   * record so signing in again can't recreate a fresh Requester profile),
+   * strips every role, permission and team, and removes its directory card
+   * so it drops out of approver lists. firestore.rules then denies the
+   * account everything. Removing the email/password sign-in itself needs
+   * Firebase Console (Authentication → Users) or a server.
+   */
+  const deleteAccount = useCallback(async (target, deletedBy) => {
+    const batch = writeBatch(db)
+    batch.update(doc(db, 'users', target.id), {
+      status: 'deleted',
+      role: 'requester',
+      permissions: [],
+      jobRole: null,
+      packageId: null,
+      buId: null,
+      teamId: null,
+      deletedAt: serverTimestamp(),
+      deletedBy: deletedBy || null,
+    })
+    batch.delete(doc(db, 'directory', target.id))
+    await batch.commit()
+  }, [])
+
+  /** Undoes deleteAccount: active again as a plain Requester with no job role. */
+  const restoreAccount = useCallback(async (target) => {
+    await updateDoc(doc(db, 'users', target.id), { status: 'active', deletedAt: null, deletedBy: null })
+  }, [])
+
+  return { users, loading, error, setRole, setPermissions, deleteAccount, restoreAccount }
 }
