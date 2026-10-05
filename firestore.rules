@@ -57,34 +57,45 @@ service cloud.firestore {
       return key in ['officer', 'senior_officer', 'team_leader', 'manager', 'senior_manager', 'hod', 'group_head'];
     }
 
-    // True only if `uid` has a job role AND that role's package exists AND
-    // grants `perm`. No role, or no package configured, means no access.
-    function packageGrants(uid, perm) {
+    // The package that applies to `uid`: their job role's, or the default
+    // "requester" package if they don't have a job role yet (e.g. a brand
+    // new account). Mirrors effectivePackageId() in jobRoles.js.
+    function packageIdOf(uid) {
       let profilePath = /databases/$(database)/documents/users/$(uid);
       let role = exists(profilePath) ? get(profilePath).data.get('jobRole', null) : null;
-      return role is string &&
-        exists(/databases/$(database)/documents/packages/$(role)) &&
-        perm in get(/databases/$(database)/documents/packages/$(role)).data.get('permissions', []);
+      return role is string ? role : 'requester';
     }
 
-    // The pre-packages approver: an Admin account with approve_requests (or
-    // a grandfathered admin with no permissions field at all).
-    function adminCanApprove(uid) {
+    // True only if `uid`'s package exists and grants `perm`. A package
+    // that hasn't been configured means no access.
+    function packageGrants(uid, perm) {
+      let pkg = packageIdOf(uid);
+      return exists(/databases/$(database)/documents/packages/$(pkg)) &&
+        perm in get(/databases/$(database)/documents/packages/$(pkg)).data.get('permissions', []);
+    }
+
+    // Team Leaders, Managers, Senior Managers and HODs may approve ANY
+    // request at Level 1 or Level 2, not only ones naming them. Mirrors
+    // ANY_REQUEST_APPROVER_ROLES in jobRoles.js.
+    function canApproveAnyRequest() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null)
+        in ['team_leader', 'manager', 'senior_manager', 'hod'];
+    }
+
+    // Who a new request may name as its Level 1 / Level 2 approver: Team
+    // Leaders, Managers, Senior Managers and HODs only (the same list the
+    // request form shows). Mirrors approverCandidates() in jobRoles.js.
+    function canBeApprover(uid) {
       let profilePath = /databases/$(database)/documents/users/$(uid);
       return exists(profilePath) &&
-        get(profilePath).data.role == 'admin' &&
-        (!('permissions' in get(profilePath).data) || 'approve_requests' in get(profilePath).data.permissions);
-    }
-
-    function canBeApprover(uid) {
-      return packageGrants(uid, 'approve_requests') || adminCanApprove(uid);
+        get(profilePath).data.get('jobRole', null) in ['team_leader', 'manager', 'senior_manager', 'hod'];
     }
 
     // --- Request packages (mirrors src/data/requestPackages.js) ---------
-    // The requester's role package. Only call after packageGrants() has
-    // confirmed they have a job role and the package exists.
+    // The requester's package. Only call after packageGrants() has
+    // confirmed it exists.
     function myRolePackage() {
-      return get(/databases/$(database)/documents/packages/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.jobRole)).data;
+      return get(/databases/$(database)/documents/packages/$(packageIdOf(request.auth.uid))).data;
     }
 
     // A CUG / Dongle request must be one the requester's role package
@@ -138,18 +149,15 @@ service cloud.firestore {
 
     // User profiles: users/{uid}
     match /users/{userId} {
-      // Anyone signed in can see a doc if it's their own, if they're an
-      // admin, if they can provision Technician Admins (Inventory Admin
-      // needs the full users list to do that from User Management), OR if
-      // the doc itself is an admin's — that last clause is what lets the
-      // Asset Request Form list admins to pick as Level 1 / Level 2
-      // approvers, without exposing every requester's profile to every
-      // other signed-in user.
+      // A profile is readable by its owner, admins, and anyone who can
+      // provision Technician Admins (Inventory Admin needs the full users
+      // list for that in User Management). Everyone else finds approvers
+      // through the minimal directory/{uid} cards instead, so no one's
+      // phone, staff ID etc. is exposed to other users.
       allow read: if isSignedIn() && (
         request.auth.uid == userId ||
         isAdmin() ||
-        hasPermission('provision_technicians') ||
-        resource.data.role == 'admin'
+        hasPermission('provision_technicians')
       );
 
       // Registration: a user may only create THEIR OWN profile document,
@@ -257,7 +265,7 @@ service cloud.firestore {
     match /packages/{roleKey} {
       allow read: if isSignedIn();
       allow create, update: if hasPermission('manage_users') &&
-        isJobRole(roleKey) &&
+        (isJobRole(roleKey) || roleKey == 'requester') &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey &&
         request.resource.data.keys().hasOnly(['name', 'permissions', 'requestOptions', 'postpaidPlan', 'updatedAt']) &&
         request.resource.data.name is string &&
@@ -313,6 +321,7 @@ service cloud.firestore {
         resource.data.requesterId == request.auth.uid ||
         resource.data.immediateManagerId == request.auth.uid ||
         resource.data.nextApprovingManagerId == request.auth.uid ||
+        canApproveAnyRequest() ||
         isAdmin() || hasPermission('manage_requests')
       );
 
@@ -340,8 +349,8 @@ service cloud.firestore {
         packageGrants(request.auth.uid, 'submit_requests') &&
         validRequestPackage() &&
         // Approvers are suggested from the team but can be changed — so
-        // whoever is named must actually be allowed to approve, be two
-        // different people, and not be the requester.
+        // whoever is named must be a Team Leader / Manager / Senior Manager
+        // / HOD, be two different people, and not be the requester.
         request.resource.data.immediateManagerId != request.resource.data.nextApprovingManagerId &&
         request.resource.data.immediateManagerId != request.auth.uid &&
         request.resource.data.nextApprovingManagerId != request.auth.uid &&
@@ -360,25 +369,42 @@ service cloud.firestore {
         fieldUnchanged('immediateManagerId') && fieldUnchanged('nextApprovingManagerId') &&
         fieldUnchanged('createdAt') &&
         (
-          // Level 1 approval/rejection: only the specific admin named as
-          // Immediate Manager on THIS request, and only while they currently
-          // hold "approve_requests" — being named isn't enough on its own if
-          // that permission was revoked after the request was submitted.
+          // Level 1 approval/rejection: the person named as Immediate
+          // Manager (while they still hold "approve_requests"), or any Team
+          // Leader / Manager / Senior Manager / HOD. Never the requester
+          // themself, and the decision must be recorded under the caller.
           (
             resource.data.status == 'Pending Level 1 Approval' &&
-            request.auth.uid == resource.data.immediateManagerId &&
-            (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests')) &&
+            (
+              (
+                request.auth.uid == resource.data.immediateManagerId &&
+                (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests'))
+              ) ||
+              canApproveAnyRequest()
+            ) &&
+            request.auth.uid != resource.data.requesterId &&
+            request.resource.data.level1.approverId == request.auth.uid &&
             request.resource.data.status in ['Pending Level 2 Approval', 'Rejected'] &&
             fieldUnchanged('rid')
           ) ||
 
-          // Level 2 approval/rejection: only the specific admin named as
-          // Next Approving Manager on THIS request. This is the one place
-          // `rid` is allowed to change — from null to the newly-raised id.
+          // Level 2 approval/rejection: the person named as Next Approving
+          // Manager, or any Team Leader / Manager / Senior Manager / HOD —
+          // but never the requester, and never whoever approved Level 1, so
+          // every request still gets two different approvers. This is the
+          // one place `rid` is allowed to change (null -> the new RID).
           (
             resource.data.status == 'Pending Level 2 Approval' &&
-            request.auth.uid == resource.data.nextApprovingManagerId &&
-            (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests')) &&
+            (
+              (
+                request.auth.uid == resource.data.nextApprovingManagerId &&
+                (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests'))
+              ) ||
+              canApproveAnyRequest()
+            ) &&
+            request.auth.uid != resource.data.requesterId &&
+            (resource.data.get('level1', null) == null || resource.data.level1.get('approverId', null) != request.auth.uid) &&
+            request.resource.data.level2.approverId == request.auth.uid &&
             request.resource.data.status in ['RID Raised', 'Rejected']
           ) ||
 

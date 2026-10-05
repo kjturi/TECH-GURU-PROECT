@@ -32,6 +32,27 @@ export function jobRoleRank(key) {
   return JOB_ROLE_KEYS.indexOf(key)
 }
 
+// Everyone without a job role yet (e.g. a brand-new account) gets the
+// default Requester package, so new users can request straight away.
+export const DEFAULT_PACKAGE_ID = 'requester'
+export const DEFAULT_PACKAGE_LABEL = 'Requester (no job role yet)'
+
+/** Package id that applies to this profile — mirrors packageIdOf() in firestore.rules. */
+export function effectivePackageId(profile) {
+  return profile?.jobRole || DEFAULT_PACKAGE_ID
+}
+
+/** Every package an admin can configure: one per job role, plus the default. */
+export const PACKAGE_ROLES = [...JOB_ROLES, { key: DEFAULT_PACKAGE_ID, label: DEFAULT_PACKAGE_LABEL }]
+
+// These job roles may approve ANY request at Level 1 or Level 2, not only
+// requests that name them. Mirrors canApproveAnyRequest() in firestore.rules.
+export const ANY_REQUEST_APPROVER_ROLES = ['team_leader', 'manager', 'senior_manager', 'hod']
+
+export function canApproveAnyRequest(profile) {
+  return ANY_REQUEST_APPROVER_ROLES.includes(profile?.jobRole)
+}
+
 // Features a package can grant. Kept to what the app actually gates today;
 // anything a user does to their OWN data (tracking requests, signing off a
 // FAT form, seeing their assets) isn't package-restricted.
@@ -42,7 +63,7 @@ export const PACKAGE_PERMISSIONS = {
 export const PACKAGE_PERMISSION_KEYS = Object.values(PACKAGE_PERMISSIONS)
 export const PACKAGE_PERMISSION_LABELS = {
   [PACKAGE_PERMISSIONS.SUBMIT_REQUESTS]: 'Request assets',
-  [PACKAGE_PERMISSIONS.APPROVE_REQUESTS]: 'Approve requests (can be picked as a Level 1 / Level 2 approver)',
+  [PACKAGE_PERMISSIONS.APPROVE_REQUESTS]: 'Approve requests where they are the named approver',
 }
 
 // Starting point when an admin creates the packages — editable afterwards.
@@ -51,7 +72,7 @@ export const PACKAGE_PERMISSION_LABELS = {
 export function defaultPackage(jobRoleKey) {
   const canApprove = jobRoleRank(jobRoleKey) >= jobRoleRank('team_leader')
   return {
-    name: `${JOB_ROLE_LABELS[jobRoleKey]} Package`,
+    name: jobRoleKey === DEFAULT_PACKAGE_ID ? 'Requester Package' : `${JOB_ROLE_LABELS[jobRoleKey]} Package`,
     permissions: canApprove
       ? [PACKAGE_PERMISSIONS.SUBMIT_REQUESTS, PACKAGE_PERMISSIONS.APPROVE_REQUESTS]
       : [PACKAGE_PERMISSIONS.SUBMIT_REQUESTS],
@@ -68,18 +89,13 @@ export function packageAllows(pkg, permission) {
  * explaining why not. `packages` is the map from usePackages().
  */
 export function packageAccess(profile, packages, permission) {
-  const jobRole = profile?.jobRole
-  if (!jobRole) {
-    return {
-      ok: false,
-      message: "Your account hasn't been given a job role yet, so this feature isn't available. Ask an administrator to assign your role and team.",
-    }
-  }
-  const pkg = packages[jobRole]
+  const packageId = effectivePackageId(profile)
+  const pkg = packages[packageId]
   if (!pkg) {
+    const which = packageId === DEFAULT_PACKAGE_ID ? 'default Requester' : JOB_ROLE_LABELS[packageId] || packageId
     return {
       ok: false,
-      message: `The ${JOB_ROLE_LABELS[jobRole] || jobRole} package hasn't been set up yet. Ask an administrator to configure it under Roles & Teams.`,
+      message: `The ${which} package hasn't been set up yet. Ask an administrator to configure it under Roles, Packages & Teams.`,
     }
   }
   if (!packageAllows(pkg, permission)) {
@@ -95,28 +111,29 @@ function byRankThenName(a, b) {
   return jobRoleRank(a.jobRole) - jobRoleRank(b.jobRole) || String(a.name).localeCompare(String(b.name))
 }
 
+/** Directory entries who can be named as a Level 1 / Level 2 approver. */
+export function approverCandidates(directory, excludeId) {
+  return directory
+    .filter((e) => e.id !== excludeId && ANY_REQUEST_APPROVER_ROLES.includes(e.jobRole))
+    .sort(byRankThenName)
+}
+
 /**
  * Suggested Level 1 / Level 2 approvers for `me` (a directory entry):
- * walk up the role ladder inside my team, then my BU's HOD, then the Group
- * Head. Only people whose package can approve are considered. Level 2 is
- * always strictly senior to Level 1.
+ * walk up the role ladder inside my team, then my BU's HOD. Only Team
+ * Leaders, Managers, Senior Managers and HODs are ever suggested (the same
+ * people the form lists). Level 2 is always strictly senior to Level 1.
  */
-export function pickApprovers(me, directory, packages) {
+export function pickApprovers(me, directory) {
   if (!me) return { l1: null, l2: null }
   const myRank = jobRoleRank(me.jobRole)
-  const eligible = directory.filter(
-    (e) =>
-      e.id !== me.id &&
-      jobRoleRank(e.jobRole) > myRank &&
-      packageAllows(packages[e.jobRole], PACKAGE_PERMISSIONS.APPROVE_REQUESTS)
-  )
+  const eligible = approverCandidates(directory, me.id).filter((e) => jobRoleRank(e.jobRole) > myRank)
 
-  const team = me.teamId ? eligible.filter((e) => e.teamId === me.teamId).sort(byRankThenName) : []
-  const hods = eligible.filter((e) => e.jobRole === 'hod' && me.buId && e.buId === me.buId).sort(byRankThenName)
-  const groupHeads = eligible.filter((e) => e.jobRole === 'group_head').sort(byRankThenName)
+  const team = me.teamId ? eligible.filter((e) => e.teamId === me.teamId) : []
+  const hods = eligible.filter((e) => e.jobRole === 'hod' && me.buId && e.buId === me.buId)
 
   const seen = new Set()
-  const candidates = [...team, ...hods, ...groupHeads].filter((e) => !seen.has(e.id) && seen.add(e.id))
+  const candidates = [...team, ...hods].filter((e) => !seen.has(e.id) && seen.add(e.id))
 
   const l1 = candidates[0] || null
   const l2 = l1 ? candidates.find((c) => jobRoleRank(c.jobRole) > jobRoleRank(l1.jobRole)) || null : null

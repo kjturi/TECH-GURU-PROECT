@@ -6,6 +6,8 @@ import { usePackages, useDirectory, useOrgUnits, useCugPlans, assignJobRole } fr
 import {
   JOB_ROLES,
   JOB_ROLE_LABELS,
+  PACKAGE_ROLES,
+  DEFAULT_PACKAGE_ID,
   PACKAGE_PERMISSION_KEYS,
   PACKAGE_PERMISSION_LABELS,
   defaultPackage,
@@ -81,6 +83,11 @@ function PackageCard({ role, pkg, isOwnRole, planKeys, onSave }) {
         <h3>{role.label}</h3>
         {pkg ? <span className="badge badge-approved">Configured</span> : <span className="badge badge-rejected">Not configured</span>}
       </div>
+      {role.key === DEFAULT_PACKAGE_ID && (
+        <p className="org-note" style={{ marginTop: 0, marginBottom: 10 }}>
+          Applies to everyone without a job role yet, including every new account, so they can request straight away.
+        </p>
+      )}
 
       {!pkg ? (
         <>
@@ -183,7 +190,7 @@ function PackagesTab({ myJobRole }) {
   const { plans } = useCugPlans()
   const [busy, setBusy] = useState(false)
   const [bulkError, setBulkError] = useState(null)
-  const editable = JOB_ROLES.filter((r) => r.key !== myJobRole)
+  const editable = PACKAGE_ROLES.filter((r) => r.key !== myJobRole)
   const missing = editable.filter((r) => !packages[r.key])
   const needsEligibility = editable.filter((r) => packages[r.key] && packages[r.key].requestOptions === undefined)
   const planKeys = plans ? Object.keys(plans).sort() : DEFAULT_PLANS
@@ -238,7 +245,7 @@ function PackagesTab({ myJobRole }) {
       )}
       {bulkError && <p className="state-msg error">{bulkError}</p>}
       <div className="org-grid">
-        {JOB_ROLES.map((role) => (
+        {PACKAGE_ROLES.map((role) => (
           <PackageCard
             key={`${role.key}-${JSON.stringify(packages[role.key] ? packageFields(packages[role.key]) : null)}-${packages[role.key]?.requestOptions === undefined}`}
             role={role}

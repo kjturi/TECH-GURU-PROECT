@@ -5,6 +5,7 @@ import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
 import { STATUS } from '../../data/requestStatuses.js'
+import { canApproveAnyRequest } from '../../data/jobRoles.js'
 
 export default function Level1Approvals() {
   const { user, profile } = useAuth()
@@ -51,7 +52,9 @@ export default function Level1Approvals() {
             </thead>
             <tbody>
               {pending.map((r) => {
-                const isMine = r.immediateManagerId === user.uid
+                // Named approver, or a Team Leader / Manager / Senior Manager / HOD
+                // (any request) — never the requester themself.
+                const isMine = (r.immediateManagerId === user.uid || canApproveAnyRequest(profile)) && r.requesterId !== user.uid
                 return (
                   <tr key={r.id}>
                     <td>{r.requesterName}</td>

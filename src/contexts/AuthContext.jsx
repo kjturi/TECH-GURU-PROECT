@@ -10,9 +10,30 @@ import {
   browserSessionPersistence,
   updateProfile,
 } from 'firebase/auth'
-import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore'
 import { auth, db, isFirebaseConfigured } from '../firebase'
 import { STAFF_ROLES } from '../data/adminPermissions.js'
+
+/**
+ * Gives a signed-in account with no users/{uid} doc (e.g. one added straight
+ * in Firebase Console) a default Requester profile. A transaction, so it
+ * never overwrites a profile that registration wrote first; if it wins the
+ * race instead, registration's own write simply fills in the details.
+ * firestore.rules only allows creating your own doc with role requester.
+ */
+async function ensureRequesterProfile(firebaseUser) {
+  const ref = doc(db, 'users', firebaseUser.uid)
+  await runTransaction(db, async (tx) => {
+    if ((await tx.get(ref)).exists()) return
+    tx.set(ref, {
+      name: firebaseUser.displayName || (firebaseUser.email || '').split('@')[0],
+      email: firebaseUser.email || '',
+      role: 'requester',
+      status: 'active',
+      createdAt: serverTimestamp(),
+    })
+  })
+}
 
 const AuthContext = createContext(null)
 
@@ -65,8 +86,18 @@ export function AuthProvider({ children }) {
       unsubscribeProfile = onSnapshot(
         doc(db, 'users', firebaseUser.uid),
         (snap) => {
-          setProfile(snap.exists() ? snap.data() : undefined)
-          setInitializing(false)
+          if (snap.exists()) {
+            setProfile(snap.data())
+            setInitializing(false)
+            return
+          }
+          // No profile yet: create the default Requester one. The snapshot
+          // fires again once it exists; only a failure ends up as "no profile".
+          ensureRequesterProfile(firebaseUser).catch((err) => {
+            console.error('[AuthContext] could not create default profile:', err)
+            setProfile(undefined)
+            setInitializing(false)
+          })
         },
         (err) => {
           console.error('[AuthContext] failed to load profile:', err)

@@ -4,7 +4,6 @@ import Topbar from '../../components/Topbar.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useRequests } from '../../hooks/useRequests.js'
-import { useAdmins } from '../../hooks/useAdmins.js'
 import { usePackages, useDirectory, useOrgUnits, useCugPlans } from '../../hooks/useOrg.js'
 import {
   REQUEST_OPTIONS,
@@ -19,10 +18,11 @@ import {
   jobRoleRank,
   packageAccess,
   packageAllows,
+  effectivePackageId,
   pickApprovers,
+  approverCandidates,
 } from '../../data/jobRoles.js'
 import { PRIORITIES, STATUS } from '../../data/requestStatuses.js'
-import { ADMIN_PERMISSIONS, hasAdminPermission } from '../../data/adminPermissions.js'
 import { DEVICE_TYPES, DEVICE_TYPE_KEYS } from '../../data/deviceTypes.js'
 import {
   HEADSET_OPTIONS,
@@ -202,27 +202,21 @@ export default function RequestWizard() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const { submitRequest } = useRequests({ uid: user.uid, isAdmin: false })
-  const { admins: allAdmins, loading: adminsLoading } = useAdmins()
   const { packages, loading: packagesLoading } = usePackages()
   const { directory, loading: directoryLoading } = useDirectory()
   const { businessUnits, teams } = useOrgUnits()
 
-  // Everyone who may be named as an approver: people whose role package can
-  // approve, plus legacy Admin accounts with the approve permission (the
-  // pre-packages approvers). firestore.rules accepts exactly these two.
-  const directoryApprovers = directory
-    .filter((e) => e.id !== user.uid && packageAllows(packages[e.jobRole], PACKAGE_PERMISSIONS.APPROVE_REQUESTS))
-    .sort((a, b) => jobRoleRank(a.jobRole) - jobRoleRank(b.jobRole) || a.name.localeCompare(b.name))
-    .map((e) => ({ id: e.id, name: e.name, label: `${e.name} — ${JOB_ROLE_LABELS[e.jobRole]}` }))
-  const listed = new Set(directoryApprovers.map((a) => a.id))
-  const adminApprovers = allAdmins
-    .filter((a) => a.id !== user.uid && !listed.has(a.id) && hasAdminPermission(a, ADMIN_PERMISSIONS.APPROVE_REQUESTS))
-    .map((a) => ({ id: a.id, name: a.name, label: `${a.name} — Admin` }))
-  const approvers = [...directoryApprovers, ...adminApprovers]
-  const approversLoading = adminsLoading || packagesLoading || directoryLoading
+  // Only Team Leaders, Managers, Senior Managers and HODs can be named as
+  // Level 1 / Level 2 approvers — firestore.rules rejects anyone else.
+  const approvers = approverCandidates(directory, user.uid).map((e) => ({
+    id: e.id,
+    name: e.name,
+    label: `${e.name} — ${JOB_ROLE_LABELS[e.jobRole]}`,
+  }))
+  const approversLoading = packagesLoading || directoryLoading
 
   const me = directory.find((e) => e.id === user.uid)
-  const suggested = pickApprovers(me, directory, packages)
+  const suggested = pickApprovers(me, directory)
   const myTeam = teams.find((t) => t.id === me?.teamId)
   const myBu = businessUnits.find((b) => b.id === me?.buId)
   const submitAccess = packageAccess(profile, packages, PACKAGE_PERMISSIONS.SUBMIT_REQUESTS)
@@ -230,7 +224,7 @@ export default function RequestWizard() {
   // Request packages (CUG Prepaid / Postpaid, Dongle) this person's role is
   // eligible for. Postpaid also needs a plan on their role package.
   const { plans: cugPlans } = useCugPlans()
-  const myPackage = packages[profile?.jobRole]
+  const myPackage = packages[effectivePackageId(profile)]
   const myPlan = myPackage?.postpaidPlan || null
   // BSP packages the admin has put in this person's plan (CUG Plans tab).
   const myBspPackages = planPackages(cugPlans, myPlan)
@@ -732,7 +726,7 @@ export default function RequestWizard() {
             {approversLoading ? (
               <p className="state-msg">Finding your approvers…</p>
             ) : approvers.length === 0 ? (
-              <p className="state-msg error">No one is set up as an approver yet, so this request can't be routed. Contact your administrator.</p>
+              <p className="state-msg error">No Team Leaders, Managers, Senior Managers or HODs are set up yet, so this request can't be routed. Contact your administrator.</p>
             ) : (
               <>
                 <p className="approver-note">
@@ -741,6 +735,7 @@ export default function RequestWizard() {
                     : suggested.l1 && suggested.l2
                       ? <>Picked automatically from {myTeam ? <strong>{myTeam.name}</strong> : 'your team'}{myBu && <> in <strong>{myBu.name}</strong></>}. You can change them if needed.</>
                       : "We couldn't find two senior approvers in your team or BU — choose the missing one below."}
+                  {' '}Approvers are Team Leaders, Managers, Senior Managers and HODs.
                 </p>
                 <div className="approver-grid">
                   <label>

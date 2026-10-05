@@ -6,10 +6,12 @@ import { useRequests } from '../../hooks/useRequests.js'
 import { useApprovals } from '../../hooks/useApprovals.js'
 import { usePackages } from '../../hooks/useOrg.js'
 import { STATUS, formatDate } from '../../data/requestStatuses.js'
-import { PACKAGE_PERMISSIONS, packageAccess } from '../../data/jobRoles.js'
+import { JOB_ROLE_LABELS, PACKAGE_PERMISSIONS, packageAccess, canApproveAnyRequest } from '../../data/jobRoles.js'
 
-function ApprovalCard({ request, level, onDecide }) {
+function ApprovalCard({ request, level, onDecide, myUid }) {
   const submitted = formatDate(request.createdAt)
+  const namedId = level === 1 ? request.immediateManagerId : request.nextApprovingManagerId
+  const namedName = level === 1 ? request.immediateManagerName : request.nextApprovingManagerName
   return (
     <article className="request-card action-needed">
       <div className="request-card-head">
@@ -23,6 +25,9 @@ function ApprovalCard({ request, level, onDecide }) {
         </div>
         <span className="badge badge-pending">Level {level}</span>
       </div>
+      <p className="request-card-meta" style={{ marginTop: 6 }}>
+        {namedId === myUid ? 'You are the named approver.' : `Named approver: ${namedName || '—'}`}
+      </p>
       {request.description && <p className="request-card-next">{request.description}</p>}
       {request.justification && (
         <p className="request-card-next"><strong>Reason:</strong> {request.justification}</p>
@@ -38,13 +43,16 @@ function ApprovalCard({ request, level, onDecide }) {
   )
 }
 
-// Approvals for everyone whose role package lets them approve — not just
-// admins. Shows only requests where this person is the named approver;
-// firestore.rules re-checks both the naming and the package on every write.
+// Approvals for regular users. Team Leaders, Managers, Senior Managers and
+// HODs see every request waiting at Level 1 or 2; anyone else whose package
+// lets them approve sees the requests that name them. Never their own
+// request, and never Level 2 of a request they approved at Level 1 —
+// firestore.rules enforces the same on every write.
 export default function Approvals() {
   const { user, profile } = useAuth()
   const { packages, loading: packagesLoading } = usePackages()
-  const { asL1, asL2, loading, error } = useApprovals(user.uid)
+  const anyRequest = canApproveAnyRequest(profile)
+  const { requests, loading, error } = useApprovals(user.uid, { anyRequest })
   const { approveLevel1, rejectLevel1, approveLevel2AndRaiseRid, rejectLevel2 } = useRequests(null)
 
   const [dialog, setDialog] = useState(null) // { request, level, action }
@@ -52,12 +60,22 @@ export default function Approvals() {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState(null)
 
-  const access = packageAccess(profile, packages, PACKAGE_PERMISSIONS.APPROVE_REQUESTS)
-  const pendingL1 = asL1.filter((r) => r.status === STATUS.PENDING_L1)
-  const pendingL2 = asL2.filter((r) => r.status === STATUS.PENDING_L2)
-  const decided = [...asL1, ...asL2]
+  const packageOk = packageAccess(profile, packages, PACKAGE_PERMISSIONS.APPROVE_REQUESTS)
+  const access = anyRequest ? { ok: true } : packageOk
+  const notMine = (r) => r.requesterId !== user.uid
+  const pendingL1 = requests.filter(
+    (r) => r.status === STATUS.PENDING_L1 && notMine(r) && (anyRequest || r.immediateManagerId === user.uid)
+  )
+  const pendingL2 = requests.filter(
+    (r) =>
+      r.status === STATUS.PENDING_L2 && notMine(r) &&
+      r.level1?.approverId !== user.uid &&
+      (anyRequest || r.nextApprovingManagerId === user.uid)
+  )
+  // Level 2 needs a different person from Level 1.
+  const heldBack = requests.filter((r) => r.status === STATUS.PENDING_L2 && r.level1?.approverId === user.uid).length
+  const decided = requests
     .filter((r) => (r.level1?.approverId === user.uid) || (r.level2?.approverId === user.uid))
-    .filter((r, i, all) => all.findIndex((x) => x.id === r.id) === i)
     .slice(0, 10)
 
   async function handleConfirm() {
@@ -89,7 +107,11 @@ export default function Approvals() {
       <div className="page-head">
         <div>
           <h1>Approvals</h1>
-          <p>Requests waiting for your decision.</p>
+          <p>
+            {anyRequest
+              ? `As a ${JOB_ROLE_LABELS[profile.jobRole]}, you can approve any request at Level 1 or Level 2.`
+              : 'Requests waiting for your decision.'}
+          </p>
         </div>
       </div>
 
@@ -108,9 +130,15 @@ export default function Approvals() {
               <p className="muted">Nothing needs your approval right now.</p>
             ) : (
               <div className="request-list">
-                {pendingL1.map((r) => <ApprovalCard key={r.id} request={r} level={1} onDecide={decide} />)}
-                {pendingL2.map((r) => <ApprovalCard key={r.id} request={r} level={2} onDecide={decide} />)}
+                {pendingL1.map((r) => <ApprovalCard key={r.id} request={r} level={1} onDecide={decide} myUid={user.uid} />)}
+                {pendingL2.map((r) => <ApprovalCard key={r.id} request={r} level={2} onDecide={decide} myUid={user.uid} />)}
               </div>
+            )}
+            {heldBack > 0 && (
+              <p className="muted" style={{ marginTop: 10, fontSize: '0.88rem' }}>
+                {heldBack} request{heldBack === 1 ? ' is' : 's are'} waiting at Level 2 for someone else, because you
+                approved {heldBack === 1 ? 'it' : 'them'} at Level 1.
+              </p>
             )}
           </section>
 
