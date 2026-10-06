@@ -454,7 +454,7 @@ function ListEditor({ title, help, items, onSave }) {
 }
 
 function ListsTab() {
-  const { branches, sbus, branchesAreDefault, loading, saveLists } = useProfileLists()
+  const { branches, sbus, branchesAreDefault, sbusAreDefault, loading, saveLists } = useProfileLists()
   if (loading) return <p className="state-msg">Loading lists…</p>
   return (
     <>
@@ -474,7 +474,9 @@ function ListsTab() {
         />
         <ListEditor
           title="SBU"
-          help="Strategic business units."
+          help={sbusAreDefault
+            ? 'Showing generic starter options — replace them with BSP’s real SBUs.'
+            : 'Strategic business units.'}
           items={sbus}
           onSave={(next) => saveLists({ branches, sbus: next })}
         />

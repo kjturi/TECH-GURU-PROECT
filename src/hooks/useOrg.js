@@ -13,8 +13,20 @@ import {
 import { db, isFirebaseConfigured } from '../firebase'
 import { DEPARTMENTS } from '../data/requestStatuses.js'
 
-// BU / Branch choices until an admin saves their own list.
+// BU / Branch and SBU choices until an admin saves their own lists.
+// The SBU ones are generic placeholders — replace them with BSP's real SBUs
+// on Roles, Packages & Teams → Dropdown Lists.
 export const DEFAULT_BRANCHES = DEPARTMENTS.filter((d) => d !== 'Other')
+export const DEFAULT_SBUS = [
+  'Retail Banking',
+  'Corporate Banking',
+  'Treasury & Markets',
+  'Technology',
+  'Finance',
+  'Risk & Compliance',
+  'Human Resources',
+  'Operations',
+]
 
 // Live subscription to a whole (small) collection. Every collection here is
 // readable by any signed-in user — see firestore.rules.
@@ -106,10 +118,16 @@ export function useCugPlans() {
  * Admin-managed dropdown choices for profile fields (config/profileLists):
  * { branches: [...], sbus: [...] }. Readable without signing in, since the
  * Register page needs them before the account exists. Until an admin saves
- * a BU / Branch list, DEFAULT_BRANCHES are offered (`branchesAreDefault`).
+ * a list, the defaults above are offered (`branchesAreDefault` /
+ * `sbusAreDefault`).
  */
 export function useProfileLists() {
-  const [lists, setLists] = useState({ branches: DEFAULT_BRANCHES, sbus: [], branchesAreDefault: true })
+  const [lists, setLists] = useState({
+    branches: DEFAULT_BRANCHES,
+    sbus: DEFAULT_SBUS,
+    branchesAreDefault: true,
+    sbusAreDefault: true,
+  })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -123,10 +141,12 @@ export function useProfileLists() {
         const data = snap.exists() ? snap.data() : {}
         const clean = (list) => (Array.isArray(list) ? [...list].sort((a, b) => a.localeCompare(b)) : [])
         const branchesAreDefault = !Array.isArray(data.branches)
+        const sbusAreDefault = !Array.isArray(data.sbus)
         setLists({
           branches: branchesAreDefault ? clean(DEFAULT_BRANCHES) : clean(data.branches),
-          sbus: clean(data.sbus),
+          sbus: sbusAreDefault ? clean(DEFAULT_SBUS) : clean(data.sbus),
           branchesAreDefault,
+          sbusAreDefault,
         })
         setLoading(false)
       },
