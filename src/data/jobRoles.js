@@ -57,9 +57,13 @@ export function resolvePackage(packages, profile) {
 /** Every package an admin can configure: one per job role, plus the default. */
 export const PACKAGE_ROLES = [...JOB_ROLES, { key: DEFAULT_PACKAGE_ID, label: DEFAULT_PACKAGE_LABEL }]
 
+// Who can be NAMED as a request's Level 1 / Level 2 approver (the request
+// form's dropdowns). Mirrors canBeApprover() in firestore.rules.
+export const NAMED_APPROVER_ROLES = ['team_leader', 'manager', 'senior_manager', 'hod']
+
 // These job roles may approve ANY request at Level 1 or Level 2, not only
 // requests that name them. Mirrors canApproveAnyRequest() in firestore.rules.
-export const ANY_REQUEST_APPROVER_ROLES = ['team_leader', 'manager', 'senior_manager', 'hod']
+export const ANY_REQUEST_APPROVER_ROLES = [...NAMED_APPROVER_ROLES, 'group_head']
 
 export function canApproveAnyRequest(profile) {
   return ANY_REQUEST_APPROVER_ROLES.includes(profile?.jobRole)
@@ -126,7 +130,7 @@ function byRankThenName(a, b) {
 /** Directory entries who can be named as a Level 1 / Level 2 approver. */
 export function approverCandidates(directory, excludeId) {
   return directory
-    .filter((e) => e.id !== excludeId && ANY_REQUEST_APPROVER_ROLES.includes(e.jobRole))
+    .filter((e) => e.id !== excludeId && NAMED_APPROVER_ROLES.includes(e.jobRole))
     .sort(byRankThenName)
 }
 

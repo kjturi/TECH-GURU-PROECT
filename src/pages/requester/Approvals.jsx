@@ -43,8 +43,8 @@ function ApprovalCard({ request, level, onDecide, myUid }) {
   )
 }
 
-// Approvals for regular users. Team Leaders, Managers, Senior Managers and
-// HODs see every request waiting at Level 1 or 2; anyone else whose package
+// Approvals for regular users. Team Leaders, Managers, Senior Managers,
+// HODs and Group Heads see every request waiting at Level 1 or 2; anyone else whose package
 // lets them approve sees the requests that name them. Never their own
 // request, and never Level 2 of a request they approved at Level 1 —
 // firestore.rules enforces the same on every write.

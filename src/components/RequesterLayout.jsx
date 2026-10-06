@@ -6,7 +6,7 @@ import { PACKAGE_PERMISSIONS, packageAllows, resolvePackage, canApproveAnyReques
 import bspLogo from '../assets/bsp-logo.jpg'
 
 // Requesters get a simple top bar — three destinations, plus Approvals for
-// Team Leaders through HODs and anyone whose package lets them approve.
+// Team Leaders through Group Heads and anyone whose package lets them approve.
 // Route guards (ProtectedRoute) and Firestore rules are still what actually
 // limit access; this is just navigation.
 const REQUESTER_LINKS = [

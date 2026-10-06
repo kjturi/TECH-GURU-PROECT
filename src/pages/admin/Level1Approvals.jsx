@@ -52,7 +52,8 @@ export default function Level1Approvals() {
             </thead>
             <tbody>
               {pending.map((r) => {
-                // Named approver, or a Team Leader / Manager / Senior Manager / HOD
+                // Named approver, or a Team Leader / Manager / Senior Manager / HOD /
+                // Group Head
                 // (any request) — never the requester themself.
                 const isMine = (r.immediateManagerId === user.uid || canApproveAnyRequest(profile)) && r.requesterId !== user.uid
                 return (

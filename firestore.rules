@@ -91,13 +91,13 @@ service cloud.firestore {
       return isActiveUser(uid) && perm in packageData(packageIdOf(uid)).get('permissions', []);
     }
 
-    // Team Leaders, Managers, Senior Managers and HODs may approve ANY
-    // request at Level 1 or Level 2, not only ones naming them. Mirrors
-    // ANY_REQUEST_APPROVER_ROLES in jobRoles.js.
+    // Team Leaders, Managers, Senior Managers, HODs and Group Heads may
+    // approve ANY request at Level 1 or Level 2, not only ones naming them.
+    // Mirrors ANY_REQUEST_APPROVER_ROLES in jobRoles.js.
     function canApproveAnyRequest() {
       return isActiveUser(request.auth.uid) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null)
-          in ['team_leader', 'manager', 'senior_manager', 'hod'];
+          in ['team_leader', 'manager', 'senior_manager', 'hod', 'group_head'];
     }
 
     // Who a new request may name as its Level 1 / Level 2 approver: Team
@@ -406,7 +406,7 @@ service cloud.firestore {
         (
           // Level 1 approval/rejection: the person named as Immediate
           // Manager (while they still hold "approve_requests"), or any Team
-          // Leader / Manager / Senior Manager / HOD. Never the requester
+          // Leader / Manager / Senior Manager / HOD / Group Head. Never the requester
           // themself, and the decision must be recorded under the caller.
           (
             resource.data.status == 'Pending Level 1 Approval' &&
@@ -424,7 +424,7 @@ service cloud.firestore {
           ) ||
 
           // Level 2 approval/rejection: the person named as Next Approving
-          // Manager, or any Team Leader / Manager / Senior Manager / HOD —
+          // Manager, or any Team Leader / Manager / Senior Manager / HOD / Group Head —
           // but never the requester, and never whoever approved Level 1, so
           // every request still gets two different approvers. This is the
           // one place `rid` is allowed to change (null -> the new RID).
