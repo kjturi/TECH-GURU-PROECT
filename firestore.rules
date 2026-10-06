@@ -1,0 +1,473 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // False for an account an admin has deleted (users/{uid}.status ==
+    // 'deleted'). Every role/package check below goes through this, so a
+    // deleted account loses all access even while its sign-in still exists.
+    function isActiveUser(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.get('status', 'active') != 'deleted';
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        isActiveUser(request.auth.uid) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Any of the three staff roles — the ones that get into the /admin
+    // shell at all. Mirrors STAFF_ROLES in src/data/adminPermissions.js.
+    function isStaff() {
+      return isSignedIn() &&
+        isActiveUser(request.auth.uid) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'technician_admin', 'inventory_admin'];
+    }
+
+    // Sub-permission within a staff role (see src/data/adminPermissions.js).
+    // An admin doc with NO "permissions" field at all — every admin account
+    // created before this feature existed — is grandfathered in as having
+    // every permission, so introducing this can't lock out an admin who
+    // relied on unconditional access before today. A newly promoted admin,
+    // and every Technician Admin / Inventory Admin account (both brand new
+    // roles — there's no legacy version of either), gets an explicit
+    // permissions array instead, and is held to exactly what's listed there,
+    // even if it's empty.
+    function hasPermission(perm) {
+      return isStaff() && (
+        (isAdmin() && !('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)) ||
+        (
+          ('permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) &&
+          perm in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions
+        )
+      );
+    }
+
+    // True if `field` holds the same value before and after this write (a
+    // field missing on both sides counts as unchanged too). Used to pin
+    // down ownership/content fields on assetRequests so a status update can
+    // never smuggle in a change to who a request belongs to or what it's
+    // for.
+    function fieldUnchanged(field) {
+      return request.resource.data.get(field, null) == resource.data.get(field, null);
+    }
+
+    // --- Job roles & role packages (mirrors src/data/jobRoles.js) -------
+    // A person's job role lives on users/{uid}.jobRole, and the package for
+    // that role at packages/{jobRole}. Keep these key lists in sync with
+    // JOB_ROLES and PACKAGE_PERMISSIONS in jobRoles.js.
+    function isJobRole(key) {
+      return key in ['officer', 'senior_officer', 'team_leader', 'manager', 'senior_manager', 'hod', 'group_head'];
+    }
+
+    // The package that applies to `uid`: their job role's, or the default
+    // "requester" package if they don't have a job role yet (e.g. a brand
+    // new account). Mirrors effectivePackageId() in jobRoles.js.
+    function packageIdOf(uid) {
+      let profilePath = /databases/$(database)/documents/users/$(uid);
+      let role = exists(profilePath) ? get(profilePath).data.get('jobRole', null) : null;
+      return role is string ? role : 'requester';
+    }
+
+    // A package's settings. If the default "requester" package hasn't been
+    // created yet, built-in defaults apply so new accounts can request
+    // straight away (mirrors DEFAULT_REQUESTER_PACKAGE in jobRoles.js). Any
+    // other package that hasn't been configured grants nothing.
+    function packageData(pkg) {
+      return exists(/databases/$(database)/documents/packages/$(pkg))
+        ? get(/databases/$(database)/documents/packages/$(pkg)).data
+        : (pkg == 'requester'
+            ? { 'permissions': ['submit_requests'], 'requestOptions': ['cug_prepaid', 'cug_postpaid', 'dongle'], 'postpaidPlan': null }
+            : { 'permissions': [], 'requestOptions': [], 'postpaidPlan': null });
+    }
+
+    // True only if `uid`'s package grants `perm`.
+    function packageGrants(uid, perm) {
+      return isActiveUser(uid) && perm in packageData(packageIdOf(uid)).get('permissions', []);
+    }
+
+    // Team Leaders, Managers, Senior Managers and HODs may approve ANY
+    // request at Level 1 or Level 2, not only ones naming them. Mirrors
+    // ANY_REQUEST_APPROVER_ROLES in jobRoles.js.
+    function canApproveAnyRequest() {
+      return isActiveUser(request.auth.uid) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null)
+          in ['team_leader', 'manager', 'senior_manager', 'hod'];
+    }
+
+    // Who a new request may name as its Level 1 / Level 2 approver: Team
+    // Leaders, Managers, Senior Managers and HODs only (the same list the
+    // request form shows). Mirrors approverCandidates() in jobRoles.js.
+    function canBeApprover(uid) {
+      return isActiveUser(uid) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.get('jobRole', null) in ['team_leader', 'manager', 'senior_manager', 'hod'];
+    }
+
+    // --- Request packages (mirrors src/data/requestPackages.js) ---------
+    // The requester's package (or the built-in Requester defaults).
+    function myRolePackage() {
+      return packageData(packageIdOf(request.auth.uid));
+    }
+
+    // A CUG / Dongle request must be one the requester's role package
+    // allows; CUG Postpaid must carry the role's plan and one of the BSP
+    // packages that plan includes in config/cugPlans; Dongle must answer
+    // "Router required?". Any other request carries none of these fields, and
+    // can't name the CUG Mobile / Dongle asset types to get around this.
+    function validRequestPackage() {
+      let d = request.resource.data;
+      let opt = d.get('requestPackage', null);
+      let pkg = myRolePackage();
+      let planCfg = /databases/$(database)/documents/config/cugPlans;
+      return (
+        opt == null &&
+        !(d.assetType in ['CUG Mobile', 'Digicel Dongle Modem']) &&
+        d.get('plan', null) == null &&
+        d.get('bspOption', null) == null &&
+        d.get('routerRequired', null) == null
+      ) || (
+        opt in pkg.get('requestOptions', []) &&
+        (opt in ['cug_prepaid', 'cug_postpaid']
+          ? d.assetType == 'CUG Mobile'
+          : d.assetType == 'Digicel Dongle Modem') &&
+        (opt == 'cug_postpaid'
+          ? (
+              d.get('plan', null) is string &&
+              d.plan == pkg.get('postpaidPlan', null) &&
+              d.get('bspOption', null) is string &&
+              d.bspOption in (exists(planCfg) ? get(planCfg).data.plans.get(d.plan, []) : [])
+            )
+          : (d.get('plan', null) == null && d.get('bspOption', null) == null)) &&
+        (opt == 'dongle'
+          ? d.get('routerRequired', null) is bool
+          : d.get('routerRequired', null) == null)
+      );
+    }
+
+    // Job assignment fields on a profile. Only a "manage_users" admin may
+    // change them, and never on their own profile.
+    function jobAssignmentUnchanged() {
+      return fieldUnchanged('jobRole') && fieldUnchanged('packageId') &&
+        fieldUnchanged('buId') && fieldUnchanged('teamId');
+    }
+
+    // The package always follows the role: packageId must equal jobRole.
+    function validJobAssignment() {
+      let role = request.resource.data.get('jobRole', null);
+      return request.resource.data.get('packageId', null) == role &&
+        (role == null || isJobRole(role));
+    }
+
+    // User profiles: users/{uid}
+    match /users/{userId} {
+      // A profile is readable by its owner, admins, and anyone who can
+      // provision Technician Admins (Inventory Admin needs the full users
+      // list for that in User Management). Everyone else finds approvers
+      // through the minimal directory/{uid} cards instead, so no one's
+      // phone, staff ID etc. is exposed to other users.
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        hasPermission('provision_technicians')
+      );
+
+      // Registration: a user may only create THEIR OWN profile document,
+      // and it must be created with role "requester". This — not anything
+      // in the UI — is the real enforcement behind "a normal user must
+      // never be able to assign themselves an elevated role": even a
+      // hand-crafted request straight to Firestore is rejected if it tries
+      // role: "admin" (or "technician_admin"/"inventory_admin") on create.
+      allow create: if isSignedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.role == 'requester' &&
+        request.resource.data.get('status', 'active') == 'active' &&
+        !('jobRole' in request.resource.data) &&
+        !('packageId' in request.resource.data) &&
+        !('buId' in request.resource.data) &&
+        !('teamId' in request.resource.data);
+
+      // A user can update their own profile, but not their own role or
+      // permissions — changing either requires "manage_users" (full user
+      // management) or, narrowly, "provision_technicians". Nobody can grant
+      // themself access this way: the self-update branch below requires
+      // role/permissions to stay exactly as they were.
+      allow update: if isSignedIn() && (
+        (
+          request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.get('permissions', null) == resource.data.get('permissions', null) &&
+          jobAssignmentUnchanged() &&
+          fieldUnchanged('status') &&
+          resource.data.get('status', 'active') != 'deleted'
+        ) ||
+        // Full user management — including job role/package/team, which
+        // must stay consistent (validJobAssignment) and can never be
+        // changed on the admin's own profile.
+        // Deleting (status 'deleted') or restoring an account is also done
+        // here — but never on the admin's own account.
+        (
+          hasPermission('manage_users') &&
+          validJobAssignment() &&
+          (request.auth.uid != userId || (jobAssignmentUnchanged() && fieldUnchanged('status')))
+        ) ||
+        // Inventory Admin's scoped provisioning right: may flip a user
+        // between "requester" and "technician_admin" ONLY (an existing
+        // admin/inventory_admin account is untouchable this way), and when
+        // landing on technician_admin the permissions written must be
+        // exactly the fixed bundle for that role — never a hand-picked or
+        // elevated set. Mirrors ROLE_DEFAULT_PERMISSIONS.technician_admin
+        // in src/data/adminPermissions.js — keep both in sync.
+        (
+          hasPermission('provision_technicians') &&
+          request.auth.uid != userId &&
+          jobAssignmentUnchanged() &&
+          fieldUnchanged('status') &&
+          resource.data.role in ['requester', 'technician_admin'] &&
+          request.resource.data.role in ['requester', 'technician_admin'] &&
+          (
+            (
+              request.resource.data.role == 'technician_admin' &&
+              request.resource.data.permissions == ['manage_assets', 'manage_sims', 'manage_requests']
+            ) ||
+            request.resource.data.role == 'requester'
+          )
+        )
+      );
+
+      allow delete: if hasPermission('manage_users');
+    }
+
+    // Inventory catalog (generic quantity-based stock). Kept in place for
+    // rollback/history even though Stock/Inventory no longer routes to it —
+    // see devices/purchaseOrders/simCards below, which replaced it as the
+    // live inventory model. Same open-read/admin-write posture as before.
+    match /assets/{assetId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Serialized device inventory (CUG mobiles, headsets, desk phones, WiFi
+    // modems) — ported from GDPCapstone's per-type MySQL tables into one
+    // collection distinguished by `type`. Read is staff-only: a unit carries
+    // assignedToRequestId, so open reads would let anyone map serial numbers
+    // to other people's requests. Requesters see their own issued assets
+    // through assetRequests.assetInfo (owner-scoped) instead. Write is also
+    // open to "manage_assets" (Technician Admin's core job).
+    match /devices/{deviceId} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasPermission('manage_assets');
+    }
+
+    // PO Number -> Invoice Number pairs (ported from GDPCapstone's
+    // `orderform` table). The "one invoice per PO" rule itself is enforced
+    // in the client transaction in useDevices.js, not here — same trust
+    // boundary as the rest of a manage_assets-gated write.
+    match /purchaseOrders/{poNumber} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasPermission('manage_assets');
+    }
+
+    // CUG SIM cards (ported from GDPCapstone's `cugsimcards` table),
+    // optionally linked to a `devices` doc by IMEI. Both Technician Admin
+    // and Inventory Admin hold "manage_sims".
+    match /simCards/{spid} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasPermission('manage_sims');
+    }
+
+    // Role packages: one per job role, id == role key. Anyone signed in can
+    // read them (the UI needs to know what their own package allows). Only
+    // "manage_users" admins may edit, and never the package for their own
+    // job role — nobody can widen their own access.
+    match /packages/{roleKey} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission('manage_users') &&
+        (isJobRole(roleKey) || roleKey == 'requester') &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey &&
+        request.resource.data.keys().hasOnly(['name', 'permissions', 'requestOptions', 'postpaidPlan', 'updatedAt']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.permissions is list &&
+        request.resource.data.permissions.hasOnly(['submit_requests', 'approve_requests']) &&
+        request.resource.data.get('requestOptions', []) is list &&
+        request.resource.data.get('requestOptions', []).hasOnly(['cug_prepaid', 'cug_postpaid', 'dongle']) &&
+        (request.resource.data.get('postpaidPlan', null) == null || request.resource.data.postpaidPlan is string);
+      allow delete: if hasPermission('manage_users') &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jobRole', null) != roleKey;
+    }
+
+    // Minimal public card (name, job role, BU, team) for everyone with a
+    // job role — what the request form reads to find approvers, instead of
+    // exposing full profiles. Written only alongside the matching users doc
+    // (checked with getAfter), so it can't drift from the real assignment.
+    match /directory/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission('manage_users') &&
+        request.auth.uid != uid &&
+        request.resource.data.keys().hasOnly(['name', 'jobRole', 'buId', 'teamId']) &&
+        request.resource.data.jobRole == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('jobRole', null) &&
+        request.resource.data.buId == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('buId', null) &&
+        request.resource.data.teamId == getAfter(/databases/$(database)/documents/users/$(uid)).data.get('teamId', null);
+      allow delete: if hasPermission('manage_users') && request.auth.uid != uid;
+    }
+
+    // CUG Postpaid plan -> BSP option mapping (config/cugPlans). Readable by
+    // everyone signed in (the request form shows the BSP option); editable
+    // by "manage_users" admins.
+    match /config/cugPlans {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('manage_users') &&
+        request.resource.data.keys().hasOnly(['plans', 'updatedAt']) &&
+        request.resource.data.plans is map;
+    }
+
+    // Choices for the BU / Branch and SBU dropdowns. Readable by anyone —
+    // the Register page shows them before the account exists, and they're
+    // just names. Editable by "manage_users" admins.
+    match /config/profileLists {
+      allow read: if true;
+      allow write: if hasPermission('manage_users') &&
+        request.resource.data.keys().hasOnly(['branches', 'sbus', 'updatedAt']) &&
+        request.resource.data.branches is list &&
+        request.resource.data.sbus is list &&
+        request.resource.data.branches.size() <= 500 &&
+        request.resource.data.sbus.size() <= 500;
+    }
+
+    // Org structure used for approver routing.
+    match /businessUnits/{buId} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('manage_users');
+    }
+    match /teams/{teamId} {
+      allow read: if isSignedIn();
+      allow create, update: if hasPermission('manage_users') && request.resource.data.buId is string;
+      allow delete: if hasPermission('manage_users');
+    }
+
+    // The asset request lifecycle document.
+    match /assetRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.immediateManagerId == request.auth.uid ||
+        resource.data.nextApprovingManagerId == request.auth.uid ||
+        canApproveAnyRequest() ||
+        isAdmin() || hasPermission('manage_requests')
+      );
+
+      // A requester may only create a request for themself, and it must
+      // start at exactly the right initial status — closing off any
+      // attempt to submit a request that's already "approved". A real,
+      // registered admin must be named for both approval stages so the
+      // request can actually move; those two ids are what the Level 1 /
+      // Level 2 update rules below check against. The declaration ("I have
+      // read... and agree to abide by the terms and conditions", shown as a
+      // required checkbox on the request form) is enforced here too — the
+      // UI already refuses to submit without it, but until now nothing
+      // stopped a direct write to the API from skipping it.
+      allow create: if isSignedIn() &&
+        request.resource.data.requesterId == request.auth.uid &&
+        request.resource.data.status == 'Pending Level 1 Approval' &&
+        request.resource.data.immediateManagerId is string &&
+        request.resource.data.immediateManagerId != '' &&
+        request.resource.data.nextApprovingManagerId is string &&
+        request.resource.data.nextApprovingManagerId != '' &&
+        request.resource.data.declarationAccepted == true &&
+        request.resource.data.declarationAcceptedAt != null &&
+        // Package: the requester's role must allow requesting, and any
+        // CUG / Dongle request package must be one their role allows.
+        packageGrants(request.auth.uid, 'submit_requests') &&
+        validRequestPackage() &&
+        // Approvers are suggested from the team but can be changed — so
+        // whoever is named must be a Team Leader / Manager / Senior Manager
+        // / HOD, be two different people, and not be the requester.
+        request.resource.data.immediateManagerId != request.resource.data.nextApprovingManagerId &&
+        request.resource.data.immediateManagerId != request.auth.uid &&
+        request.resource.data.nextApprovingManagerId != request.auth.uid &&
+        canBeApprover(request.resource.data.immediateManagerId) &&
+        canBeApprover(request.resource.data.nextApprovingManagerId);
+
+      // Ownership and request content can never change as a side effect of
+      // a status update, by anyone, at any stage — only the fields each
+      // workflow action actually needs to touch (status, rid, and the
+      // stage-specific detail object) are left out of this list.
+      allow update: if isSignedIn() &&
+        fieldUnchanged('requesterId') && fieldUnchanged('requesterName') && fieldUnchanged('requesterEmail') &&
+        fieldUnchanged('employeeId') && fieldUnchanged('department') &&
+        fieldUnchanged('assetType') && fieldUnchanged('description') && fieldUnchanged('quantity') &&
+        fieldUnchanged('justification') && fieldUnchanged('priority') && fieldUnchanged('dateRequired') &&
+        fieldUnchanged('immediateManagerId') && fieldUnchanged('nextApprovingManagerId') &&
+        fieldUnchanged('createdAt') &&
+        (
+          // Level 1 approval/rejection: the person named as Immediate
+          // Manager (while they still hold "approve_requests"), or any Team
+          // Leader / Manager / Senior Manager / HOD. Never the requester
+          // themself, and the decision must be recorded under the caller.
+          (
+            resource.data.status == 'Pending Level 1 Approval' &&
+            (
+              (
+                request.auth.uid == resource.data.immediateManagerId &&
+                (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests'))
+              ) ||
+              canApproveAnyRequest()
+            ) &&
+            request.auth.uid != resource.data.requesterId &&
+            request.resource.data.level1.approverId == request.auth.uid &&
+            request.resource.data.status in ['Pending Level 2 Approval', 'Rejected'] &&
+            fieldUnchanged('rid')
+          ) ||
+
+          // Level 2 approval/rejection: the person named as Next Approving
+          // Manager, or any Team Leader / Manager / Senior Manager / HOD —
+          // but never the requester, and never whoever approved Level 1, so
+          // every request still gets two different approvers. This is the
+          // one place `rid` is allowed to change (null -> the new RID).
+          (
+            resource.data.status == 'Pending Level 2 Approval' &&
+            (
+              (
+                request.auth.uid == resource.data.nextApprovingManagerId &&
+                (hasPermission('approve_requests') || packageGrants(request.auth.uid, 'approve_requests'))
+              ) ||
+              canApproveAnyRequest()
+            ) &&
+            request.auth.uid != resource.data.requesterId &&
+            (resource.data.get('level1', null) == null || resource.data.level1.get('approverId', null) != request.auth.uid) &&
+            request.resource.data.level2.approverId == request.auth.uid &&
+            request.resource.data.status in ['RID Raised', 'Rejected']
+          ) ||
+
+          // Every other stage (RID assignment, stock, FAT, officer sign-off,
+          // closing) stays open to any admin OR "manage_requests" holder
+          // (Technician Admin, Inventory Admin) — explicitly excluding the
+          // two pending-approval statuses above so nobody can reach around
+          // the designated-approver checks.
+          (
+            (isAdmin() || hasPermission('manage_requests')) &&
+            resource.data.status != 'Pending Level 1 Approval' &&
+            resource.data.status != 'Pending Level 2 Approval' &&
+            fieldUnchanged('rid')
+          ) ||
+
+          // The owning requester's own sign-off — unchanged from before.
+          (
+            resource.data.requesterId == request.auth.uid &&
+            resource.data.status == 'Awaiting User Sign-Off' &&
+            request.resource.data.status == 'Awaiting Approving Officer Sign-Off' &&
+            request.resource.data.requesterId == resource.data.requesterId &&
+            request.resource.data.rid == resource.data.rid &&
+            request.resource.data.quantity == resource.data.quantity &&
+            fieldUnchanged('rid')
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+  }
+}
