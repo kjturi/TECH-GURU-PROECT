@@ -30,7 +30,7 @@ export default function AssetRequests() {
             <thead>
               <tr>
                 <th>Requester</th>
-                <th>BU / Branch</th>
+                <th>BU</th>
                 <th>Asset</th>
                 <th>Qty</th>
                 <th>Priority</th>

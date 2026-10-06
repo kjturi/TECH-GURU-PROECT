@@ -392,7 +392,7 @@ function PlansTab() {
   )
 }
 
-// --- Dropdown Lists (BU / Branch, SBU) ----------------------------------------
+// --- Dropdown Lists (BU, SBU) ----------------------------------------
 
 function ListEditor({ title, help, items, onSave }) {
   const [busy, setBusy] = useState(false)
@@ -459,13 +459,13 @@ function ListsTab() {
   return (
     <>
       <p className="org-intro">
-        Choices for the BU / Branch and SBU dropdowns on Register and Profile. Changes show up straight away.
+        Choices for the BU and SBU dropdowns on Register and Profile. Changes show up straight away.
         Renaming or removing an option doesn't change profiles that already saved it, and everyone can still pick
         "Other" and type a value that isn't listed.
       </p>
       <div className="org-grid">
         <ListEditor
-          title="BU / Branch"
+          title="BU"
           help={branchesAreDefault
             ? 'Showing starter options (the old department list). Add, rename or remove any to make it yours.'
             : 'Business units and branches people belong to.'}

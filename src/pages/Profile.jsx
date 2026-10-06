@@ -99,7 +99,7 @@ export default function Profile() {
             <input placeholder="Staff ID" value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)} />
             <input placeholder="Position Title" value={form.positionTitle} onChange={(e) => set('positionTitle', e.target.value)} />
             <input placeholder="Phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
-            <ListSelect value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU / Branch" />
+            <ListSelect value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU" />
             <ListSelect value={form.sbu} onChange={(v) => set('sbu', v)} options={sbus} placeholder="SBU" />
             <select value={form.country} onChange={(e) => set('country', e.target.value)}>
               {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}

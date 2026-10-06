@@ -45,7 +45,7 @@ export default function Level2Approvals() {
             <thead>
               <tr>
                 <th>Requester</th>
-                <th>BU / Branch</th>
+                <th>BU</th>
                 <th>Asset</th>
                 <th>Qty</th>
                 <th>Level 1 by</th>

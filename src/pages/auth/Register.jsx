@@ -130,8 +130,8 @@ export default function Register() {
             required
           />
 
-          <label className="auth-label" htmlFor="reg-bu">BU / Branch</label>
-          <ListSelect id="reg-bu" value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU / Branch" />
+          <label className="auth-label" htmlFor="reg-bu">BU</label>
+          <ListSelect id="reg-bu" value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU" />
 
           <label className="auth-label" htmlFor="reg-sbu">SBU</label>
           <ListSelect id="reg-sbu" value={form.sbu} onChange={(v) => set('sbu', v)} options={sbus} placeholder="SBU" />

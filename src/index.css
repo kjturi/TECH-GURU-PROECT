@@ -2135,7 +2135,7 @@ table td.actions-cell {
   line-height: 1.5;
 }
 
-/* Admin-managed dropdowns (BU / Branch, SBU) */
+/* Admin-managed dropdowns (BU, SBU) */
 .list-select {
   display: grid;
   gap: 6px;

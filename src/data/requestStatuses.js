@@ -53,7 +53,7 @@ export const STATUS_BADGE_CLASS = {
 
 export const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 
-// Starter BU / Branch options, shown until an admin sets the list on
+// Starter BU options, shown until an admin sets the list on
 // Roles, Packages & Teams → Dropdown Lists (see useProfileLists).
 export const DEPARTMENTS = [
   'IT',

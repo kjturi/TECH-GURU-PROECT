@@ -13,7 +13,7 @@ import {
 import { db, isFirebaseConfigured } from '../firebase'
 import { DEPARTMENTS } from '../data/requestStatuses.js'
 
-// BU / Branch and SBU choices until an admin saves their own lists.
+// BU and SBU choices until an admin saves their own lists.
 // The SBU ones are generic placeholders — replace them with BSP's real SBUs
 // on Roles, Packages & Teams → Dropdown Lists.
 export const DEFAULT_BRANCHES = DEPARTMENTS.filter((d) => d !== 'Other')

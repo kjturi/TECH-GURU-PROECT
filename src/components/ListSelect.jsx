@@ -4,7 +4,7 @@ const OTHER = '__other__'
 
 /**
  * Dropdown for a free-text profile field whose choices an admin manages
- * (e.g. BU / Branch, SBU). Falls back to a plain text box while the list is
+ * (e.g. BU, SBU). Falls back to a plain text box while the list is
  * empty, keeps a value that's no longer in the list, and offers "Other…" so
  * nobody is blocked by a missing option.
  */
