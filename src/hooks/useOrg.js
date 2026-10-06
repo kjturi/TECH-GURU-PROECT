@@ -11,6 +11,10 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../firebase'
+import { DEPARTMENTS } from '../data/requestStatuses.js'
+
+// BU / Branch choices until an admin saves their own list.
+export const DEFAULT_BRANCHES = DEPARTMENTS.filter((d) => d !== 'Other')
 
 // Live subscription to a whole (small) collection. Every collection here is
 // readable by any signed-in user — see firestore.rules.
@@ -101,10 +105,11 @@ export function useCugPlans() {
 /**
  * Admin-managed dropdown choices for profile fields (config/profileLists):
  * { branches: [...], sbus: [...] }. Readable without signing in, since the
- * Register page needs them before the account exists.
+ * Register page needs them before the account exists. Until an admin saves
+ * a BU / Branch list, DEFAULT_BRANCHES are offered (`branchesAreDefault`).
  */
 export function useProfileLists() {
-  const [lists, setLists] = useState({ branches: [], sbus: [] })
+  const [lists, setLists] = useState({ branches: DEFAULT_BRANCHES, sbus: [], branchesAreDefault: true })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -117,7 +122,12 @@ export function useProfileLists() {
       (snap) => {
         const data = snap.exists() ? snap.data() : {}
         const clean = (list) => (Array.isArray(list) ? [...list].sort((a, b) => a.localeCompare(b)) : [])
-        setLists({ branches: clean(data.branches), sbus: clean(data.sbus) })
+        const branchesAreDefault = !Array.isArray(data.branches)
+        setLists({
+          branches: branchesAreDefault ? clean(DEFAULT_BRANCHES) : clean(data.branches),
+          sbus: clean(data.sbus),
+          branchesAreDefault,
+        })
         setLoading(false)
       },
       (err) => {

@@ -63,7 +63,7 @@ export function buildInventoryExport(devices, view, requestById = {}) {
       poNumber: d.poNumber || '',
       issuedTo: d.issuedTo?.name || req?.requesterName || (status.key === 'reserved' ? 'Reserved for a request' : ''),
       title: d.issuedTo?.title || req?.positionTitle || '',
-      businessUnit: d.issuedTo?.businessUnit || [req?.department, req?.buBranch].filter(Boolean).join(' / '),
+      businessUnit: d.issuedTo?.businessUnit || [req?.buBranch || req?.department].filter(Boolean).join(' / '),
       costCentre: d.issuedTo?.costCentre || '',
       dateIssued: formatDate(deviceIssuedOn(d, req)) || '',
       rid: req?.rid || '',

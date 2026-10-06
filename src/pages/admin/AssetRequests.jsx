@@ -14,7 +14,7 @@ export default function AssetRequests() {
   const filtered = useMemo(() => {
     const term = search.toLowerCase()
     return requests.filter((r) =>
-      [r.requesterName, r.assetType, r.department, r.status, r.rid]
+      [r.requesterName, r.assetType, r.buBranch, r.department, r.status, r.rid]
         .join(' ')
         .toLowerCase()
         .includes(term)
@@ -30,7 +30,7 @@ export default function AssetRequests() {
             <thead>
               <tr>
                 <th>Requester</th>
-                <th>Department</th>
+                <th>BU / Branch</th>
                 <th>Asset</th>
                 <th>Qty</th>
                 <th>Priority</th>
@@ -42,7 +42,7 @@ export default function AssetRequests() {
               {filtered.map((r) => (
                 <tr key={r.id}>
                   <td>{r.requesterName}</td>
-                  <td>{r.department}</td>
+                  <td>{r.buBranch || r.department || '—'}</td>
                   <td>{r.assetType}</td>
                   <td>{r.quantity}</td>
                   <td>{r.priority}</td>

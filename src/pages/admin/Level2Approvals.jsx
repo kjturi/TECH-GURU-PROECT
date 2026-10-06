@@ -45,7 +45,7 @@ export default function Level2Approvals() {
             <thead>
               <tr>
                 <th>Requester</th>
-                <th>Department</th>
+                <th>BU / Branch</th>
                 <th>Asset</th>
                 <th>Qty</th>
                 <th>Level 1 by</th>
@@ -65,7 +65,7 @@ export default function Level2Approvals() {
                 return (
                   <tr key={r.id}>
                     <td>{r.requesterName}</td>
-                    <td>{r.department}</td>
+                    <td>{r.buBranch || r.department || '—'}</td>
                     <td>{r.assetType}</td>
                     <td>{r.quantity}</td>
                     <td>{r.level1?.approverName || '—'}</td>

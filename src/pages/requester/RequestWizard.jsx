@@ -306,7 +306,7 @@ export default function RequestWizard() {
     !form.employeeId.trim() && 'Staff ID',
   ].filter(Boolean)
   const softMissing = [
-    !form.department.trim() && 'Department',
+    !form.buBranch.trim() && 'BU / Branch',
     !form.phone.trim() && 'Phone',
   ].filter(Boolean)
 
@@ -439,7 +439,7 @@ export default function RequestWizard() {
           <div className="profile-summary-grid">
             <SummaryItem label="Name" value={fullName} />
             <SummaryItem label="Staff ID" value={form.employeeId} />
-            <SummaryItem label="Department" value={form.department} />
+            <SummaryItem label="BU / Branch" value={form.buBranch} />
             <SummaryItem label="Role" value={form.positionTitle} />
             <SummaryItem label="Location" value={form.country} />
             <SummaryItem label="Phone" value={form.phone} />
@@ -702,7 +702,7 @@ export default function RequestWizard() {
 
           <div className="review-summary">
             <h3>Requested By</h3>
-            <p style={{ fontSize: '0.9rem' }}>{fullName} · {form.employeeId} · {form.department}</p>
+            <p style={{ fontSize: '0.9rem' }}>{fullName} · {form.employeeId} · {form.buBranch || form.department}</p>
           </div>
 
           <label style={{ display: 'block' }}>

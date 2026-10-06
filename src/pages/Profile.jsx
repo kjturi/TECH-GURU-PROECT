@@ -3,7 +3,6 @@ import { doc, updateDoc } from 'firebase/firestore'
 import Topbar from '../components/Topbar.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { db } from '../firebase.js'
-import { DEPARTMENTS } from '../data/requestStatuses.js'
 import ListSelect from '../components/ListSelect.jsx'
 import { useProfileLists } from '../hooks/useOrg.js'
 import { TITLES, COUNTRIES } from '../data/assetCategories.js'
@@ -19,7 +18,6 @@ function formFromProfile(profile) {
     employeeId: profile?.employeeId || '',
     positionTitle: profile?.positionTitle || '',
     phone: profile?.phone || '',
-    department: profile?.department || DEPARTMENTS[0],
     buBranch: profile?.buBranch || '',
     sbu: profile?.sbu || '',
     country: profile?.country || COUNTRIES[0],
@@ -101,9 +99,6 @@ export default function Profile() {
             <input placeholder="Staff ID" value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)} />
             <input placeholder="Position Title" value={form.positionTitle} onChange={(e) => set('positionTitle', e.target.value)} />
             <input placeholder="Phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
-            <select value={form.department} onChange={(e) => set('department', e.target.value)}>
-              {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
             <ListSelect value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU / Branch" />
             <ListSelect value={form.sbu} onChange={(v) => set('sbu', v)} options={sbus} placeholder="SBU" />
             <select value={form.country} onChange={(e) => set('country', e.target.value)}>

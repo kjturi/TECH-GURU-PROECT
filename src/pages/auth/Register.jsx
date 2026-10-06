@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import AuthLogo from '../../components/AuthLogo.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
-import { DEPARTMENTS } from '../../data/requestStatuses.js'
 import ListSelect from '../../components/ListSelect.jsx'
 import { useProfileLists } from '../../hooks/useOrg.js'
 import { TITLES, COUNTRIES } from '../../data/assetCategories.js'
@@ -22,7 +21,6 @@ const emptyForm = {
   positionTitle: '',
   phone: '',
   email: '',
-  department: DEPARTMENTS[0],
   buBranch: '',
   sbu: '',
   country: COUNTRIES[0],
@@ -46,8 +44,8 @@ export default function Register() {
     e.preventDefault()
     setError(null)
 
-    if (!form.firstName.trim() || !form.surname.trim() || !form.employeeId.trim() || !form.email.trim() || !form.department) {
-      setError('Please fill in your first name, surname, staff ID, email, and department.')
+    if (!form.firstName.trim() || !form.surname.trim() || !form.employeeId.trim() || !form.email.trim()) {
+      setError('Please fill in your first name, surname, staff ID and email.')
       return
     }
     if (form.password.length < 6) {
@@ -74,7 +72,6 @@ export default function Register() {
         positionTitle: form.positionTitle.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
-        department: form.department,
         buBranch: form.buBranch.trim(),
         sbu: form.sbu.trim(),
         country: form.country,
@@ -132,13 +129,6 @@ export default function Register() {
             autoComplete="username"
             required
           />
-
-          <label className="auth-label" htmlFor="reg-dept">Department</label>
-          <select id="reg-dept" value={form.department} onChange={(e) => set('department', e.target.value)}>
-            {DEPARTMENTS.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
 
           <label className="auth-label" htmlFor="reg-bu">BU / Branch</label>
           <ListSelect id="reg-bu" value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU / Branch" />

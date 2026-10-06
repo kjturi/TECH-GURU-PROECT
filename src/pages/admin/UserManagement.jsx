@@ -197,14 +197,14 @@ export default function UserManagement() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Department</th><th>Employee ID</th><th>App Role</th><th>Job Role</th><th>Permissions</th><th></th></tr>
+              <tr><th>Name</th><th>Email</th><th>BU / Branch</th><th>Employee ID</th><th>App Role</th><th>Job Role</th><th>Permissions</th><th></th></tr>
             </thead>
             <tbody>
               {visibleUsers.map((u) => (
                 <tr key={u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
-                  <td>{u.department}</td>
+                  <td>{u.buBranch || u.department || '—'}</td>
                   <td>{u.employeeId}</td>
                   <td>{ROLE_LABELS[u.role] || u.role}</td>
                   <td>

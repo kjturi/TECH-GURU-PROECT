@@ -26,7 +26,7 @@ export default function DeviceStatusCell({ device, request }) {
     return (
       <div className="device-issued">
         <strong>{request.requesterName}</strong>
-        <span className="muted">{[request.rid, request.department].filter(Boolean).join(' · ')}</span>
+        <span className="muted">{[request.rid, request.buBranch || request.department].filter(Boolean).join(' · ')}</span>
         <span><StatusBadge status={request.status} /></span>
       </div>
     )

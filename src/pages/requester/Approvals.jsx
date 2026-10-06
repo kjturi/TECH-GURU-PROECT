@@ -18,7 +18,7 @@ function ApprovalCard({ request, level, onDecide, myUid }) {
         <div>
           <h3>{request.assetType} × {request.quantity || 1}</h3>
           <p className="request-card-meta">
-            {request.requesterName} · {request.department || 'No department'}
+            {request.requesterName} · {request.buBranch || request.department || 'No BU / Branch'}
             {submitted && <> · Submitted {submitted}</>}
             {request.priority && <> · {request.priority} priority</>}
           </p>

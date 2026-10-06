@@ -454,7 +454,7 @@ function ListEditor({ title, help, items, onSave }) {
 }
 
 function ListsTab() {
-  const { branches, sbus, loading, saveLists } = useProfileLists()
+  const { branches, sbus, branchesAreDefault, loading, saveLists } = useProfileLists()
   if (loading) return <p className="state-msg">Loading lists…</p>
   return (
     <>
@@ -466,7 +466,9 @@ function ListsTab() {
       <div className="org-grid">
         <ListEditor
           title="BU / Branch"
-          help="Business units and branches people belong to."
+          help={branchesAreDefault
+            ? 'Showing starter options (the old department list). Add, rename or remove any to make it yours.'
+            : 'Business units and branches people belong to.'}
           items={branches}
           onSave={(next) => saveLists({ branches: next, sbus })}
         />

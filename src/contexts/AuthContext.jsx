@@ -130,7 +130,7 @@ export function AuthProvider({ children }) {
    * profile instead of asking for them again on every request.
    */
   const register = useCallback(
-    async ({ title, firstName, surname, employeeId, positionTitle, phone, email, department, buBranch, sbu, country, password }) => {
+    async ({ title, firstName, surname, employeeId, positionTitle, phone, email, buBranch, sbu, country, password }) => {
       setAuthError(null)
       const fullName = `${firstName} ${surname}`.trim()
       const credential = await createUserWithEmailAndPassword(auth, email, password)
@@ -144,7 +144,6 @@ export function AuthProvider({ children }) {
         employeeId,
         positionTitle,
         phone,
-        department,
         buBranch,
         sbu,
         country,
