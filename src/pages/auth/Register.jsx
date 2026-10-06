@@ -4,6 +4,8 @@ import PasswordInput from '../../components/PasswordInput.jsx'
 import AuthLogo from '../../components/AuthLogo.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { DEPARTMENTS } from '../../data/requestStatuses.js'
+import ListSelect from '../../components/ListSelect.jsx'
+import { useProfileLists } from '../../hooks/useOrg.js'
 import { TITLES, COUNTRIES } from '../../data/assetCategories.js'
 
 const ERROR_MESSAGES = {
@@ -30,6 +32,7 @@ const emptyForm = {
 
 export default function Register() {
   const { register } = useAuth()
+  const { branches, sbus } = useProfileLists()
   const navigate = useNavigate()
   const [form, setForm] = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
@@ -138,10 +141,10 @@ export default function Register() {
           </select>
 
           <label className="auth-label" htmlFor="reg-bu">BU / Branch</label>
-          <input id="reg-bu" value={form.buBranch} onChange={(e) => set('buBranch', e.target.value)} />
+          <ListSelect id="reg-bu" value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU / Branch" />
 
           <label className="auth-label" htmlFor="reg-sbu">SBU</label>
-          <input id="reg-sbu" value={form.sbu} onChange={(e) => set('sbu', e.target.value)} />
+          <ListSelect id="reg-sbu" value={form.sbu} onChange={(v) => set('sbu', v)} options={sbus} placeholder="SBU" />
 
           <label className="auth-label" htmlFor="reg-country">Country</label>
           <select id="reg-country" value={form.country} onChange={(e) => set('country', e.target.value)}>

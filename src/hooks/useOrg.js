@@ -98,6 +98,43 @@ export function useCugPlans() {
   return { plans, loading, error, savePlans }
 }
 
+/**
+ * Admin-managed dropdown choices for profile fields (config/profileLists):
+ * { branches: [...], sbus: [...] }. Readable without signing in, since the
+ * Register page needs them before the account exists.
+ */
+export function useProfileLists() {
+  const [lists, setLists] = useState({ branches: [], sbus: [] })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) {
+      setLoading(false)
+      return
+    }
+    const unsubscribe = onSnapshot(
+      doc(db, 'config', 'profileLists'),
+      (snap) => {
+        const data = snap.exists() ? snap.data() : {}
+        const clean = (list) => (Array.isArray(list) ? [...list].sort((a, b) => a.localeCompare(b)) : [])
+        setLists({ branches: clean(data.branches), sbus: clean(data.sbus) })
+        setLoading(false)
+      },
+      (err) => {
+        console.error('[useProfileLists] snapshot error:', err)
+        setLoading(false)
+      }
+    )
+    return () => unsubscribe()
+  }, [])
+
+  const saveLists = useCallback(async (next) => {
+    await setDoc(doc(db, 'config', 'profileLists'), { ...next, updatedAt: serverTimestamp() })
+  }, [])
+
+  return { ...lists, loading, saveLists }
+}
+
 /** Minimal public card per person with a job role — used to find approvers. */
 export function useDirectory() {
   const { docs, loading, error } = useCollection('directory')

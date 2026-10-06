@@ -326,6 +326,19 @@ service cloud.firestore {
         request.resource.data.plans is map;
     }
 
+    // Choices for the BU / Branch and SBU dropdowns. Readable by anyone —
+    // the Register page shows them before the account exists, and they're
+    // just names. Editable by "manage_users" admins.
+    match /config/profileLists {
+      allow read: if true;
+      allow write: if hasPermission('manage_users') &&
+        request.resource.data.keys().hasOnly(['branches', 'sbus', 'updatedAt']) &&
+        request.resource.data.branches is list &&
+        request.resource.data.sbus is list &&
+        request.resource.data.branches.size() <= 500 &&
+        request.resource.data.sbus.size() <= 500;
+    }
+
     // Org structure used for approver routing.
     match /businessUnits/{buId} {
       allow read: if isSignedIn();

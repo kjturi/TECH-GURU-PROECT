@@ -28,10 +28,12 @@ const ADMIN_LINKS = [
   { to: '/admin/rid', label: 'Request Management', icon: '#', permission: ADMIN_PERMISSIONS.MANAGE_REQUESTS },
   { to: '/admin/queue', label: 'Team Queue', icon: '≡', permission: ADMIN_PERMISSIONS.MANAGE_REQUESTS },
   { to: '/admin/technician', label: 'Technician Actions', icon: '◈', permission: ADMIN_PERMISSIONS.MANAGE_ASSETS },
+  { to: '/admin/fat', label: 'FAT Forms', icon: '▥', permission: ADMIN_PERMISSIONS.MANAGE_REQUESTS },
+
+  { heading: 'Inventory Management' },
   { to: '/admin/inventory', label: 'Stock / Inventory', icon: '▣', permission: ADMIN_PERMISSIONS.MANAGE_ASSETS },
   { to: '/admin/sim-cards', label: 'SIM Cards', icon: '▨', permission: ADMIN_PERMISSIONS.MANAGE_SIMS },
   { to: '/admin/asset-info', label: 'Asset Information', icon: '◉', anyPermission: [ADMIN_PERMISSIONS.MANAGE_ASSETS, ADMIN_PERMISSIONS.MANAGE_REQUESTS] },
-  { to: '/admin/fat', label: 'FAT Forms', icon: '▥', permission: ADMIN_PERMISSIONS.MANAGE_REQUESTS },
 
   { heading: 'Sign-Off & Closure' },
   { to: '/admin/signoff/user', label: 'User Sign-Off', icon: '◆', permission: ADMIN_PERMISSIONS.MANAGE_REQUESTS },

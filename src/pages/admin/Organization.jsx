@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Topbar from '../../components/Topbar.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useUsers } from '../../hooks/useUsers.js'
-import { usePackages, useDirectory, useOrgUnits, useCugPlans, assignJobRole } from '../../hooks/useOrg.js'
+import { usePackages, useDirectory, useOrgUnits, useCugPlans, useProfileLists, assignJobRole } from '../../hooks/useOrg.js'
 import {
   JOB_ROLES,
   JOB_ROLE_LABELS,
@@ -28,6 +28,7 @@ const TABS = [
   { key: 'plans', label: 'CUG Plans' },
   { key: 'teams', label: 'Business Units & Teams' },
   { key: 'people', label: 'People' },
+  { key: 'lists', label: 'Dropdown Lists' },
 ]
 
 // --- Role Packages ----------------------------------------------------------
@@ -391,6 +392,95 @@ function PlansTab() {
   )
 }
 
+// --- Dropdown Lists (BU / Branch, SBU) ----------------------------------------
+
+function ListEditor({ title, help, items, onSave }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function run(next) {
+    setBusy(true)
+    setError(null)
+    try {
+      await onSave(next)
+    } catch (err) {
+      console.error('[Organization] list save failed:', err)
+      setError('Could not save — you may not have permission.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const add = (name) => {
+    if (items.some((i) => i.toLowerCase() === name.toLowerCase())) {
+      setError(`"${name}" is already in the list.`)
+      return
+    }
+    return run([...items, name])
+  }
+
+  return (
+    <section className="org-card">
+      <div className="org-card-head">
+        <h3>{title}</h3>
+        <span className="count-pill">{items.length}</span>
+      </div>
+      <p className="org-note" style={{ marginTop: 0, marginBottom: 10 }}>{help}</p>
+      {items.length === 0 ? (
+        <p className="muted" style={{ fontSize: '0.88rem' }}>No options yet — people type it in freely until you add some.</p>
+      ) : (
+        <ul className="list-editor">
+          {items.map((item) => (
+            <li key={item}>
+              <Renamable
+                name={item}
+                onRename={(name) =>
+                  name.toLowerCase() !== item.toLowerCase() && items.some((i) => i.toLowerCase() === name.toLowerCase())
+                    ? setError(`"${name}" is already in the list.`)
+                    : run(items.map((i) => (i === item ? name : i)))
+                }
+              />
+              <button className="btn btn-danger" disabled={busy} onClick={() => run(items.filter((i) => i !== item))}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <InlineAdd placeholder={`Add ${title}`} onAdd={add} />
+      {error && <p className="state-msg error" style={{ marginTop: 8 }}>{error}</p>}
+    </section>
+  )
+}
+
+function ListsTab() {
+  const { branches, sbus, loading, saveLists } = useProfileLists()
+  if (loading) return <p className="state-msg">Loading lists…</p>
+  return (
+    <>
+      <p className="org-intro">
+        Choices for the BU / Branch and SBU dropdowns on Register and Profile. Changes show up straight away.
+        Renaming or removing an option doesn't change profiles that already saved it, and everyone can still pick
+        "Other" and type a value that isn't listed.
+      </p>
+      <div className="org-grid">
+        <ListEditor
+          title="BU / Branch"
+          help="Business units and branches people belong to."
+          items={branches}
+          onSave={(next) => saveLists({ branches: next, sbus })}
+        />
+        <ListEditor
+          title="SBU"
+          help="Strategic business units."
+          items={sbus}
+          onSave={(next) => saveLists({ branches, sbus: next })}
+        />
+      </div>
+    </>
+  )
+}
+
 // --- Business Units & Teams --------------------------------------------------
 
 function InlineAdd({ placeholder, onAdd }) {
@@ -681,6 +771,7 @@ export default function Organization() {
       {tab === 'plans' && <PlansTab />}
       {tab === 'teams' && <TeamsTab />}
       {tab === 'people' && <PeopleTab myUid={user.uid} />}
+      {tab === 'lists' && <ListsTab />}
     </>
   )
 }

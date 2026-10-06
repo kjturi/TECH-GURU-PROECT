@@ -4,6 +4,8 @@ import Topbar from '../components/Topbar.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { db } from '../firebase.js'
 import { DEPARTMENTS } from '../data/requestStatuses.js'
+import ListSelect from '../components/ListSelect.jsx'
+import { useProfileLists } from '../hooks/useOrg.js'
 import { TITLES, COUNTRIES } from '../data/assetCategories.js'
 
 // Shared between /requester/profile and /admin/profile — the fields being
@@ -26,6 +28,7 @@ function formFromProfile(profile) {
 
 export default function Profile() {
   const { user, profile } = useAuth()
+  const { branches, sbus } = useProfileLists()
   const [form, setForm] = useState(() => formFromProfile(profile))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -101,8 +104,8 @@ export default function Profile() {
             <select value={form.department} onChange={(e) => set('department', e.target.value)}>
               {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
-            <input placeholder="BU / Branch" value={form.buBranch} onChange={(e) => set('buBranch', e.target.value)} />
-            <input placeholder="SBU" value={form.sbu} onChange={(e) => set('sbu', e.target.value)} />
+            <ListSelect value={form.buBranch} onChange={(v) => set('buBranch', v)} options={branches} placeholder="BU / Branch" />
+            <ListSelect value={form.sbu} onChange={(v) => set('sbu', v)} options={sbus} placeholder="SBU" />
             <select value={form.country} onChange={(e) => set('country', e.target.value)}>
               {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
